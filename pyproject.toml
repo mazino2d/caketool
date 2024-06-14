@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "caketool"
+version = "0.0.0"
+description = "Common tools for MLOps"
+readme = "README.md"
+authors = [{ name = "Khoi Do", email = "khoi.do@cake.vn" }]
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+]
+keywords = ["cake", "ds", "mlops"]
+dependencies = ["google-cloud-aiplatform", "google-cloud-storage"]
+requires-python = ">=3.7"
+
+# [project.optional-dependencies]
+# optional = ["build", "twine"]
+
+[project.scripts]
+caketool = "caketool.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/cake-digital-bank"
+
+
+[tool.bumpver]
+current_version = "0.0.0"
+version_pattern = "MAJOR.MINOR.PATCH"
+commit_message = "bump version {old_version} -> {new_version}"
+commit = true
+tag = true
+push = false
+
+[tool.bumpver.file_patterns]
+"pyproject.toml" = ['current_version = "{version}"', 'version = "{version}"']
+"src/caketool/__init__.py" = ["{version}"]
+"src/caketool/__main__.py" = ["- caketool v{version}"]
