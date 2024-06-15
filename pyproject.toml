@@ -15,11 +15,18 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 keywords = ["cake", "ds", "mlops"]
-dependencies = ["google-cloud-aiplatform", "google-cloud-storage"]
+dependencies = [
+    "google-cloud-aiplatform",
+    "google-cloud-storage",
+    "pandas",
+    "numpy",
+    "xgboost",
+    "scikit-learn",
+]
 requires-python = ">=3.7"
 
-# [project.optional-dependencies]
-# optional = ["build", "twine"]
+[project.optional-dependencies]
+dev = ["build", "twine", "pip-tools", "bumpver"]
 
 [project.scripts]
 caketool = "caketool.__main__:main"

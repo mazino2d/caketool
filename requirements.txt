@@ -68,12 +68,22 @@ grpcio-status==1.62.2
     # via google-api-core
 idna==3.7
     # via requests
+joblib==1.4.2
+    # via scikit-learn
 numpy==1.26.4
-    # via shapely
+    # via
+    #   caketool (pyproject.toml)
+    #   pandas
+    #   scikit-learn
+    #   scipy
+    #   shapely
+    #   xgboost
 packaging==24.1
     # via
     #   google-cloud-aiplatform
     #   google-cloud-bigquery
+pandas==2.2.2
+    # via caketool (pyproject.toml)
 proto-plus==1.23.0
     # via
     #   google-api-core
@@ -99,7 +109,11 @@ pydantic==2.7.4
 pydantic-core==2.18.4
     # via pydantic
 python-dateutil==2.9.0.post0
-    # via google-cloud-bigquery
+    # via
+    #   google-cloud-bigquery
+    #   pandas
+pytz==2024.1
+    # via pandas
 requests==2.32.3
     # via
     #   google-api-core
@@ -107,13 +121,25 @@ requests==2.32.3
     #   google-cloud-storage
 rsa==4.9
     # via google-auth
+scikit-learn==1.5.0
+    # via caketool (pyproject.toml)
+scipy==1.13.1
+    # via
+    #   scikit-learn
+    #   xgboost
 shapely==2.0.4
     # via google-cloud-aiplatform
 six==1.16.0
     # via python-dateutil
+threadpoolctl==3.5.0
+    # via scikit-learn
 typing-extensions==4.12.2
     # via
     #   pydantic
     #   pydantic-core
+tzdata==2024.1
+    # via pandas
 urllib3==2.2.1
     # via requests
+xgboost==2.0.3
+    # via caketool (pyproject.toml)
