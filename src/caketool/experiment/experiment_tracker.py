@@ -11,7 +11,7 @@ class ExperimentTracker:
         experiment_name: str,
         experiment_run_name: str,
         bucket_name: str,
-        type: Literal['develop', 'deploy'] = "develop",
+        mode: Literal['develop', 'deploy'] = "develop",
         experiment_description: str = None,
         experiment_tensorboard: bool = False,
     ) -> None:
@@ -22,7 +22,7 @@ class ExperimentTracker:
         self.experiment_tensorboard = experiment_tensorboard
         self.experiment_run_name = experiment_run_name
         self.bucket_name = bucket_name
-        self.type = type
+        self.mode = mode
         self.gs_client = storage.Client(project=self.project)
         self.gc_bucket = storage.Bucket(self.gs_client, self.bucket_name)
         aiplatform.init(
@@ -33,7 +33,7 @@ class ExperimentTracker:
             experiment_tensorboard=self.experiment_tensorboard,
             staging_bucket=self.bucket_name,
         )
-        if self.type == "develop":
+        if self.mode == "develop":
             self.experiment_run = aiplatform.start_run(self.experiment_run_name)
             self.execution = aiplatform.start_execution(
                 display_name="Experiment Tracking",
@@ -80,12 +80,12 @@ class ExperimentTracker:
         return blob
 
     def __enter__(self):
-        if self.type == "develop":
+        if self.mode == "develop":
             self.execution.__enter__()
             self.experiment_run.__enter__()
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        if self.type == "develop":
+        if self.mode == "develop":
             self.execution.__exit__(exc_type, exc_value, exc_traceback)
             self.experiment_run.__exit__(exc_type, exc_value, exc_traceback)
