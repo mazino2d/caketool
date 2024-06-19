@@ -1,1 +1,1 @@
-from .inf_handler import InfHandler
+from .infinity_handler import InfintyHandler

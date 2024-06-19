@@ -4,8 +4,9 @@ from sklearn.base import BaseEstimator, TransformerMixin
 import numpy as np
 import pandas as pd
 
-class InfHandler(TransformerMixin, BaseEstimator):
-    def __init__(self, cols: List[str], def_val: Number=-100):
+
+class InfintyHandler(TransformerMixin, BaseEstimator):
+    def __init__(self, cols: List[str], def_val: Number = -100):
         self.cols = cols
         self.def_val = def_val
 

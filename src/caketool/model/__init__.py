@@ -1,1 +1,1 @@
-from .xgboost import XCakeGboost
+from .voting_model import VotingModel
