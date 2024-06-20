@@ -22,6 +22,7 @@ dependencies = [
     "numpy",
     "xgboost",
     "scikit-learn",
+    "statsmodels",
 ]
 requires-python = ">=3.7"
 
