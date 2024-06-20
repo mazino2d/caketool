@@ -9,6 +9,7 @@ bumpver update --major # Increment the MAJOR version when you make incompatible 
 bumpver update --minor # Increment the MINOR version when you add functionality in a backwards compatible manner.
 bumpver update --patch # Increment the PATCH version when you make backwards compatible bug fixes.
 python -m pip install -e . # Install on local machine
+rm ./dist/*
 python -m build
 twine upload -r testpypi dist/*
 twine upload dist/*
