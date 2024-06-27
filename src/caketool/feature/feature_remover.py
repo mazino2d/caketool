@@ -3,25 +3,104 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
-
 class FeatureRemover(TransformerMixin, BaseEstimator):
+    """
+    Transformer that removes specified columns from a DataFrame.
+    
+    Parameters
+    ----------
+    droped_cols : List[str], optional (default=[])
+        List of column names to be removed.
+    """
+
     def __init__(self, droped_cols: List[str] = []):
+        """
+        Initialize the FeatureRemover with the specified columns to be removed.
+        
+        Parameters
+        ----------
+        droped_cols : List[str], optional (default=[])
+            List of column names to be removed.
+        """
         self.droped_cols = droped_cols
 
     def fit(self, X, y=None):
+        """
+        Fit the transformer. This method does not perform any fitting and is included 
+        to maintain compatibility with scikit-learn's interface.
+        
+        Parameters
+        ----------
+        X : pd.DataFrame
+            The input samples.
+        
+        y : array-like, shape (n_samples,), optional (default=None)
+            The target values.
+        
+        Returns
+        -------
+        self : object
+            Returns self.
+        """
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+        Transform the input DataFrame by removing the specified columns.
+        
+        Parameters
+        ----------
+        X : pd.DataFrame
+            The input samples.
+        
+        Returns
+        -------
+        X : pd.DataFrame
+            The transformed DataFrame with specified columns removed.
+        """
         columns = list(set(self.droped_cols).intersection(X.columns))
         return X.drop(columns=columns)
 
 
 class ColinearFeatureRemover(FeatureRemover):
+    """
+    Transformer that removes collinear features from a DataFrame based on a correlation threshold.
+    
+    Parameters
+    ----------
+    correlation_threshold : float, optional (default=0.9)
+        The correlation threshold above which features are considered collinear and are removed.
+    """
+
     def __init__(self, correlation_threshold=0.9):
+        """
+        Initialize the ColinearFeatureRemover with the specified correlation threshold.
+        
+        Parameters
+        ----------
+        correlation_threshold : float, optional (default=0.9)
+            The correlation threshold above which features are considered collinear and are removed.
+        """
         super().__init__([])
         self.correlation_threshold = correlation_threshold
 
     def fit(self, X: pd.DataFrame, y: pd.Series = None):
+        """
+        Fit the transformer by identifying collinear features to be removed.
+        
+        Parameters
+        ----------
+        X : pd.DataFrame
+            The input samples.
+        
+        y : pd.Series, optional (default=None)
+            The target values.
+        
+        Returns
+        -------
+        self : object
+            Returns self.
+        """
         correlations = []
         for col in X.columns:
             correlations.append(np.abs(y.corr(X[col])))
