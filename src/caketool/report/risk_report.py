@@ -44,12 +44,10 @@ def decribe_risk_score(
     summary['TPR'] = 1-summary['cumsum_bad'] / (summary['cumsum_bad'].max())
     summary[["bad_scaled", "good_scaled"]] = np.round(MinMaxScaler().fit_transform(summary[["bad", "good"]]), 3)
     summary = summary.reset_index()
-    summary["score_range"] = -550 * summary['proba_segment'] + 850
-    summary["score_range"] = summary["score_range"].shift(-1).fillna(300).astype(int).astype(str) + '-' + summary["score_range"].astype(int).astype(str)
     summary["band"] = [f"B{i}" for i in range(len(summary), 0, -1)]
 
     return summary[[
-        'band', 'score_range', 'proba_segment', 'def_rate%', 'approval_rate%',
+        'band', 'proba_segment', 'def_rate%', 'approval_rate%',
         'client', 'bad', 'good',
         '%bad vs total bad', '%bad cumsum',
         '%good vs total good',  '%good cumsum',

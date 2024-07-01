@@ -69,6 +69,7 @@ class InfinityHandler(TransformerMixin, BaseEstimator):
         X : pd.DataFrame
             The transformed DataFrame with infinite values replaced.
         """
-        for col in list(set(X[self.cols].columns.to_series()[np.isinf(X[self.cols]).any()])):
+        columns = list(set(self.cols).intersection(X.columns))
+        for col in list(set(X[columns].columns.to_series()[np.isinf(X[columns]).any()])):
             X[col] = X[col].apply(lambda x: self.def_val if x == np.inf else x)
         return X

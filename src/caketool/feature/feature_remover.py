@@ -2,11 +2,13 @@ from typing import List
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.feature_selection import f_classif
+
 
 class FeatureRemover(TransformerMixin, BaseEstimator):
     """
     Transformer that removes specified columns from a DataFrame.
-    
+
     Parameters
     ----------
     droped_cols : List[str], optional (default=[])
@@ -16,7 +18,7 @@ class FeatureRemover(TransformerMixin, BaseEstimator):
     def __init__(self, droped_cols: List[str] = []):
         """
         Initialize the FeatureRemover with the specified columns to be removed.
-        
+
         Parameters
         ----------
         droped_cols : List[str], optional (default=[])
@@ -28,15 +30,15 @@ class FeatureRemover(TransformerMixin, BaseEstimator):
         """
         Fit the transformer. This method does not perform any fitting and is included 
         to maintain compatibility with scikit-learn's interface.
-        
+
         Parameters
         ----------
         X : pd.DataFrame
             The input samples.
-        
+
         y : array-like, shape (n_samples,), optional (default=None)
             The target values.
-        
+
         Returns
         -------
         self : object
@@ -47,12 +49,12 @@ class FeatureRemover(TransformerMixin, BaseEstimator):
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         """
         Transform the input DataFrame by removing the specified columns.
-        
+
         Parameters
         ----------
         X : pd.DataFrame
             The input samples.
-        
+
         Returns
         -------
         X : pd.DataFrame
@@ -65,7 +67,7 @@ class FeatureRemover(TransformerMixin, BaseEstimator):
 class ColinearFeatureRemover(FeatureRemover):
     """
     Transformer that removes collinear features from a DataFrame based on a correlation threshold.
-    
+
     Parameters
     ----------
     correlation_threshold : float, optional (default=0.9)
@@ -75,7 +77,7 @@ class ColinearFeatureRemover(FeatureRemover):
     def __init__(self, correlation_threshold=0.9):
         """
         Initialize the ColinearFeatureRemover with the specified correlation threshold.
-        
+
         Parameters
         ----------
         correlation_threshold : float, optional (default=0.9)
@@ -87,15 +89,15 @@ class ColinearFeatureRemover(FeatureRemover):
     def fit(self, X: pd.DataFrame, y: pd.Series = None):
         """
         Fit the transformer by identifying collinear features to be removed.
-        
+
         Parameters
         ----------
         X : pd.DataFrame
             The input samples.
-        
+
         y : pd.Series, optional (default=None)
             The target values.
-        
+
         Returns
         -------
         self : object
@@ -122,4 +124,25 @@ class ColinearFeatureRemover(FeatureRemover):
                         to_remove_list.append(col_b)
 
         self.droped_cols = to_remove_list
+        return self
+
+
+class UnivariateFeatureRemover(FeatureRemover):
+    def __init__(self, score_func: callable = f_classif, threshold=0.05):
+        super().__init__([])
+        self.score_func = score_func
+        self.threshold = threshold
+        self.feature_importance = None
+
+    def fit(self, X: pd.DataFrame, y: pd.Series = None):
+        f_statistic, p_values = self.score_func(X, y)
+        self.feature_importance = pd.DataFrame({
+            "features": X.columns,
+            "f_statistic": f_statistic,
+            "p_values": p_values
+        }).fillna({
+            "f_statistic": 0,
+            "p_values": 1,
+        })
+        self.droped_cols = list(self.feature_importance[self.feature_importance["p_values"] <= self.threshold]["features"])
         return self
