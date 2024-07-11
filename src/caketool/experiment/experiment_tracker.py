@@ -2,6 +2,7 @@ import pickle
 from typing import *
 from google.cloud import aiplatform, storage
 
+
 class ExperimentTracker:
     """
     A class to manage and track machine learning experiments using Google Cloud AI Platform.
@@ -95,10 +96,10 @@ class ExperimentTracker:
         artifact_id : str
             The unique identifier for the artifact.
         """
-        blob = self._create_blob(artifact_id)
+        blob = self._add_artifact(artifact_id)
         blob.upload_from_filename(filename)
 
-    def log_pickle(self, model: object, artifact_id: str):
+    def log_pickle(self, var: object, artifact_id: str):
         """
         Log a pickled model as an artifact to Google Cloud Storage.
 
@@ -109,9 +110,8 @@ class ExperimentTracker:
         artifact_id : str
             The unique identifier for the artifact.
         """
-        pickle_out = pickle.dumps(model)
-        blob = self._get_blob(artifact_id)
-        self._add_artifact(artifact_id)
+        pickle_out = pickle.dumps(var)
+        blob = self._add_artifact(artifact_id)
         blob.upload_from_string(pickle_out)
 
     def load_pickle(self, artifact_id: str) -> object:
@@ -193,15 +193,15 @@ class ExperimentTracker:
     def __exit__(self, exc_type, exc_value, exc_traceback):
         """
         Exit the runtime context for the experiment tracker, ending the experiment run and execution.
-        
+
         Parameters
         ----------
         exc_type : Type[BaseException]
             The exception type.
-        
+
         exc_value : BaseException
             The exception value.
-        
+
         exc_traceback : TracebackType
             The traceback object.
         """
