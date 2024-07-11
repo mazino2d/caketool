@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "caketool"
-version = "0.9.0"
+version = "0.10.0"
 description = "Common tools for MLOps"
 readme = "README.md"
 authors = [{ name = "Khoi Do", email = "khoi.do@cake.vn" }]
@@ -37,7 +37,7 @@ Homepage = "https://github.com/cake-digital-bank"
 
 
 [tool.bumpver]
-current_version = "0.9.0"
+current_version = "0.10.0"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message = "bump version {old_version} -> {new_version}"
 commit = true
