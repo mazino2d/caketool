@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from google.cloud import bigquery
+from text import strip_vietnamese_accents
 
 
 class FeatureMonitor:
@@ -50,8 +51,8 @@ class FeatureMonitor:
         for col in numerical_features:
             df[col] = df[col].apply(lambda x: -100 if x < 0 else x)
         # Handle categorical columns
-        for cols in categorical_features:
-            df[cols] = df[cols].apply(lambda x: self.MISSING if x in cate_missing_values else x)
+        for col in categorical_features:
+            df[col] = df[col].apply(lambda x: self.MISSING if x in cate_missing_values else strip_vietnamese_accents(x).lower().strip())
 
         return df
 
