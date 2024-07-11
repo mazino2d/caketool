@@ -1,9 +1,9 @@
-from typing import List, Set, Dict
+from typing import List, Set, Dict, Union
 import pandas as pd
 import numpy as np
 from datetime import datetime
 from google.cloud import bigquery
-from text import strip_vietnamese_accents
+from caketool.text import strip_vietnamese_accents
 
 
 class FeatureMonitor:
@@ -15,6 +15,21 @@ class FeatureMonitor:
         self.MISSING = 'cake.miss'
         self.OTHER = 'cake.other'
         self.bq_client = bigquery.Client(project=self.project, location=self.location)
+
+    def round(self, val: Union[int, float], type: type):
+        if type == int:
+            num_digits = len(str(int(val)))
+            round_to = (num_digits - 2) * -1
+
+            if num_digits > 2:
+                return round(val, round_to)
+            else:
+                return int(val)
+        elif type == float:
+            return round(val, 2)
+        else:
+            pass
+        return val
 
     def normalize_data(
         self, df: pd.DataFrame, inplace: bool = False,
@@ -62,6 +77,8 @@ class FeatureMonitor:
         n_bins=10
     ) -> Dict[str, np.ndarray]:
         numerical_features = list(df.select_dtypes([int, float]).columns)
+        int_features = list(df.select_dtypes([int]).columns)
+        float_features = list(df.select_dtypes([float]).columns)
         categorical_features = list(df.select_dtypes([object]).columns)
         percentage = np.linspace(0, 100, n_bins + 1) / 100
         bin_thresholds = dict()
@@ -73,6 +90,13 @@ class FeatureMonitor:
                 continue
             percentage = np.linspace(0, 100, n_bins + 1)
             bins = np.percentile(series, percentage)
+            if f in int_features:
+                bins = [self.round(e, int) for e in bins]
+            if f in float_features:
+                bins = [self.round(e, float) for e in bins]
+
+            if bins[0] != 0:
+                bins = [0, *bins]
             bins = np.unique(bins)
             if len(bins) >= 2:
                 bins[-1] = bins[-1] + 1e-10
@@ -180,6 +204,7 @@ class FeatureMonitor:
                 dist = zip(bins, histogram)
             if row["type"] == "num":
                 bins = [round(float(e), 2) for e in row["bins"]]
+                bins = [int(e) if e.is_integer() else e for e in bins]
                 if len(bins) <= 0:
                     continue
                 segment_label = []
@@ -211,7 +236,6 @@ class FeatureMonitor:
                 bigquery.SchemaField("segment", 'STRING', 'REQUIRED'),
                 bigquery.SchemaField("count", 'INTEGER', 'REQUIRED'),
                 bigquery.SchemaField("total", 'INTEGER', 'REQUIRED'),
-                bigquery.SchemaField("percent", 'FLOAT', 'REQUIRED'),
                 bigquery.SchemaField("percent", 'FLOAT', 'REQUIRED'),
                 bigquery.SchemaField("utc_update_at", 'DATETIME', 'REQUIRED'),
             ],
