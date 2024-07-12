@@ -70,7 +70,7 @@ class FeatureMonitor:
         float_features = set(df.select_dtypes([float]).columns)
         categorical_features = list(df.select_dtypes([object]).columns)
         bin_thresholds = dict()
-        for f in [numerical_features]:
+        for f in numerical_features:
             series = df[f]
             series = series[(series > 0) & (~series.isna())]
             if len(series) == 0:
