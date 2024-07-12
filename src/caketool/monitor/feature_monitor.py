@@ -1,14 +1,30 @@
-from typing import List, Set, Dict
+from typing import List, Set, Dict, Tuple, Union
 import pandas as pd
 import numpy as np
 from datetime import datetime
 from google.cloud import bigquery
+from caketool.metric import psi_from_distribution
 from caketool.utils import str_utils, num_utils
 
 
 class FeatureMonitor:
+    """
+    A class to monitor and analyze features in a dataset.
+    """
 
     def __init__(self, project, location, dataset="mlops_motinor") -> None:
+        """
+        Initialize the FeatureMonitor class.
+
+        Parameters
+        ----------
+        project : str
+            Google Cloud project name.
+        location : str
+            Location of the Google Cloud resources.
+        dataset : str, optional
+            Dataset name in BigQuery. Defaults to 'mlops_motinor'.
+        """
         self.project = project
         self.location = location
         self.dataset = dataset
@@ -20,6 +36,23 @@ class FeatureMonitor:
         self, df: pd.DataFrame, inplace: bool = False,
         cate_missing_values: Set[str] = {'-1', '-100', 'unknown', ''}
     ) -> pd.DataFrame:
+        """
+        Normalize the data by filling missing values and standardizing feature types.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame to be normalized.
+        inplace : bool, optional
+            Whether to modify the DataFrame in place. Defaults to False.
+        cate_missing_values : Set[str], optional
+            Set of categorical missing values. Defaults to {'-1', '-100', 'unknown', ''}.
+
+        Returns
+        -------
+        pd.DataFrame
+            Normalized DataFrame.
+        """
         if not inplace:
             df = df.copy()
         # Fill missing value
@@ -64,13 +97,28 @@ class FeatureMonitor:
         self,
         df: pd.DataFrame,
         n_bins=10
-    ) -> Dict[str, np.ndarray]:
-        numerical_features = list(df.select_dtypes([int, float]).columns)
+    ) -> Dict[str, List[Union[float, str]]]:
+        """
+        Create bin data for numerical and categorical features.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame to create bin data from.
+        n_bins : int, optional
+            Number of bins. Defaults to 10.
+
+        Returns
+        -------
+        Dict[str, List[Union[float, str]]
+            Dictionary of bin thresholds for each feature.
+        """
         int_features = set(df.select_dtypes([int]).columns)
         float_features = set(df.select_dtypes([float]).columns)
         categorical_features = list(df.select_dtypes([object]).columns)
         bin_thresholds = dict()
-        for f in numerical_features:
+        # Bin num features
+        for f in [*int_features, *float_features]:
             series = df[f]
             series = series[(series > 0) & (~series.isna())]
             if len(series) == 0:
@@ -89,6 +137,7 @@ class FeatureMonitor:
             if len(bins) >= 2:
                 bins[-1] = bins[-1] + 1e-10
             bin_thresholds[f] = bins
+        # Bin cate features
         for f in categorical_features:
             series = df[f]
             bins = series.value_counts()[:n_bins].index.to_list()
@@ -97,31 +146,26 @@ class FeatureMonitor:
 
         return bin_thresholds
 
-    def load_bin_data(
-        self,
-        dataset_id,
-        table_name="feature_distribution"
-    ) -> Dict[str, np.ndarray]:
-        table_id = f"{self.project}.{self.dataset}.{table_name}"
-        df_distribution: pd.DataFrame = self.bq_client.query(f"""
-            SELECT feature_name, type, bins FROM {table_id}
-            WHERE dataset_id = '{dataset_id}'
-        """).to_dataframe()
-
-        bin_thresholds = {}
-        for _, row in df_distribution.iterrows():
-            if row["type"] == "num":
-                bin_thresholds[row["feature_name"]] = list(map(float, row["bins"]))
-            if row["type"] == "cate":
-                bin_thresholds[row["feature_name"]] = list(map(str, row["bins"]))
-
-        return bin_thresholds
-
     def calculate_distribution(
         self,
         df: pd.DataFrame,
         bin_thresholds: Dict[str, np.ndarray]
-    ):
+    ) -> pd.DataFrame:
+        """
+        Calculate the distribution of features based on bin thresholds.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame to calculate distribution from.
+        bin_thresholds : Dict[str, np.ndarray]
+            Dictionary of bin thresholds for each feature.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame of feature distributions.
+        """
         hists = []
         categorical_features = [k for k, v in bin_thresholds.items() if len(v) > 0 and isinstance(v[0], str)]
         numerical_features = [k for k, v in bin_thresholds.items() if len(v) > 0 and not isinstance(v[0], str)]
@@ -143,12 +187,24 @@ class FeatureMonitor:
 
         return pd.DataFrame(hists, columns=["feature_name", "type", "bins", "histogram"])
 
-    def store_distribution_bigquery(
+    def store_distribution(
             self,
             df_distribution: pd.DataFrame,
             dataset_id: str,
             bq_table_name="feature_distribution"
     ) -> None:
+        """
+        Store the feature distribution in BigQuery.
+
+        Parameters
+        ----------
+        df_distribution : pd.DataFrame
+            DataFrame of feature distributions.
+        dataset_id : str
+            Dataset ID.
+        bq_table_name : str, optional
+            Table name in BigQuery. Defaults to 'feature_distribution'.
+        """
         df_distribution = df_distribution.copy()
         df_distribution["dataset_id"] = dataset_id
         job_config = bigquery.LoadJobConfig(
@@ -162,18 +218,76 @@ class FeatureMonitor:
             clustering_fields=["dataset_id"]
         )
         table_id = f"{self.project}.{self.dataset}.{bq_table_name}"
-        self.bq_client.query(f"DELETE FROM {table_id} WHERE dataset_id = '{dataset_id}'")
+        self.bq_client.query(f"DELETE FROM {table_id} WHERE dataset_id = '{dataset_id}'").result()
         self.bq_client.load_table_from_dataframe(df_distribution, table_id, job_config=job_config)
 
-    def load_distribution(self, dataset_id: str, table_name: str = "feature_distribution") -> pd.DataFrame:
+    def load_distribution(
+        self, dataset_id: str, table_name: str = "feature_distribution"
+    ) -> Tuple[pd.DataFrame, Dict[str, List[str, float]]]:
+        """
+        Load the feature distribution from BigQuery.
+
+        Parameters
+        ----------
+        dataset_id : str
+            Dataset ID.
+        table_name : str, optional
+            Table name in BigQuery. Defaults to 'feature_distribution'.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame of feature distributions.
+        """
         table_id = f"{self.project}.{self.dataset}.{table_name}"
         df_distribution: pd.DataFrame = self.bq_client.query(f"""
             SELECT * FROM {table_id}
             WHERE dataset_id = '{dataset_id}'
         """).to_dataframe()
-        return df_distribution
+        bin_thresholds = {}
+        for _, row in df_distribution.iterrows():
+            if row["type"] == "num":
+                bin_thresholds[row["feature_name"]] = list(map(float, row["bins"]))
+            if row["type"] == "cate":
+                bin_thresholds[row["feature_name"]] = list(map(str, row["bins"]))
 
-    def store_distribution_looker(
+        return df_distribution, bin_thresholds
+
+    def calculate_feature_drift(self, dev_distribution: pd.DataFrame, test_distribution: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculate the feature drift between two distributions.
+
+        Parameters
+        ----------
+        dev_distribution : pd.DataFrame
+            DataFrame of the development distribution.
+        test_distribution : pd.DataFrame
+            DataFrame of the test distribution.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame of feature drift with PSI values.
+        """
+        comp_psi = pd.merge(
+            dev_distribution, test_distribution,
+            how="inner",
+            on=["feature_name", "type"],
+            suffixes=["_dev", "_test"]
+        )
+
+        for col in ["histogram_dev", "histogram_test"]:
+            if comp_psi[col].apply(lambda s: s.sum()).nunique() != 1:
+                raise ValueError(f"Sizing of {col} is not consistent between the features of the dataset!")
+
+        wrong_bins_features = comp_psi[comp_psi.apply(lambda s: not (s["bins_dev"] == s["bins_test"]).all(), axis=1)]["feature_name"]
+        if len(wrong_bins_features) > 0:
+            raise ValueError(f"Bins is not the same between 2 datasets. {','.join(wrong_bins_features)}")
+
+        comp_psi["psi"] = comp_psi.apply(lambda r: psi_from_distribution(r["histogram_dev"], r["histogram_test"]), axis=1)
+        return comp_psi.sort_values(by="psi", ascending=False)
+
+    def transform_distribution_to_looker(
         self,
         score_type: str,
         dataset_type: str,
@@ -182,6 +296,29 @@ class FeatureMonitor:
         df_distribution,
         bq_table_name="feature_distribution_looker"
     ) -> pd.DataFrame:
+        """
+        Store the feature distribution in Looker format in BigQuery.
+
+        Parameters
+        ----------
+        score_type : str
+            Type of score.
+        dataset_type : str
+            Type of dataset.
+        version_type : str
+            Type of version.
+        version : str
+            Version identifier.
+        df_distribution : pd.DataFrame
+            DataFrame of feature distributions.
+        bq_table_name : str, optional
+            Table name in BigQuery. Defaults to 'feature_distribution_looker'.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame in Looker format.
+        """
         ls_row = []
         for _, row in df_distribution.iterrows():
             feature_name = row["feature_name"]
@@ -237,36 +374,6 @@ class FeatureMonitor:
             AND dataset_type = '{dataset_type}'
             AND version_type = '{version_type}'
             AND version = '{version}'
-        """)
+        """).result()
         self.bq_client.load_table_from_dataframe(df_looker, table_id, job_config=job_config)
         return df_looker
-
-    def calculate_feature_drift_psi(self, dev_distribution: pd.DataFrame, test_distribution: pd.DataFrame) -> pd.DataFrame:
-        comp_psi = pd.merge(
-            dev_distribution, test_distribution,
-            how="inner",
-            on=["feature_name", "type"],
-            suffixes=["_dev", "_test"]
-        )
-
-        for col in ["histogram_dev", "histogram_test"]:
-            if comp_psi[col].apply(lambda s: s.sum()).nunique() != 1:
-                raise ValueError(f"Sizing of {col} is not consistent between the features of the dataset!")
-
-        wrong_bins_features = comp_psi[comp_psi.apply(lambda s: not (s["bins_dev"] == s["bins_test"]).all(), axis=1)]["feature_name"]
-        if len(wrong_bins_features) > 0:
-            raise ValueError(f"Bins is not the same between 2 datasets. {','.join(wrong_bins_features)}")
-
-        def calc_psi(r: pd.Series) -> float:
-            dev_percents: np.ndarray = r["histogram_dev"] / np.sum(r["histogram_dev"])
-            test_percents: np.ndarray = r["histogram_test"] / np.sum(r["histogram_test"])
-            dev_percents = np.clip(dev_percents, a_min=0.00001, a_max=None)
-            test_percents = np.clip(test_percents, a_min=0.00001, a_max=None)
-            if len(dev_percents) != len(test_percents):
-                print(r)
-            psi_value = (dev_percents - test_percents) * np.log(dev_percents / test_percents)
-            psi_value = sum(psi_value)
-            return psi_value
-
-        comp_psi["psi"] = comp_psi.apply(calc_psi, axis=1)
-        return comp_psi
