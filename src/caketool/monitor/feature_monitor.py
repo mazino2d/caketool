@@ -223,7 +223,7 @@ class FeatureMonitor:
 
     def load_distribution(
         self, dataset_id: str, table_name: str = "feature_distribution"
-    ) -> Tuple[pd.DataFrame, Dict[str, List[str, float]]]:
+    ) -> Tuple[pd.DataFrame, Dict[str, List[Union[str, float]]]]:
         """
         Load the feature distribution from BigQuery.
 
