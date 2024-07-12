@@ -7,7 +7,11 @@ VN_EN_TRANS = str.maketrans(
     chr(774) + chr(770) + chr(795) + chr(769) + chr(768) + chr(777) + chr(771) + chr(803)
 )
 
-def strip_vietnamese_accents(txt: str) -> str:
+UPPER_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+LOWER_ALPHABET = "abcdefghijklmnopqrstuvwxyz"
+
+
+def remove_vn_diacritics(txt: str) -> str:
     """
     Converts Vietnamese characters with diacritics to their corresponding
     ASCII equivalents.

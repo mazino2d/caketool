@@ -1,9 +1,9 @@
-from typing import List, Set, Dict, Union
+from typing import List, Set, Dict
 import pandas as pd
 import numpy as np
 from datetime import datetime
 from google.cloud import bigquery
-from caketool.text import strip_vietnamese_accents
+from caketool.utils import str_utils, num_utils
 
 
 class FeatureMonitor:
@@ -15,21 +15,6 @@ class FeatureMonitor:
         self.MISSING = 'cake.miss'
         self.OTHER = 'cake.other'
         self.bq_client = bigquery.Client(project=self.project, location=self.location)
-
-    def round(self, val: Union[int, float], type: type):
-        if type == int:
-            num_digits = len(str(int(val)))
-            round_to = (num_digits - 2) * -1
-
-            if num_digits > 2:
-                return round(val, round_to)
-            else:
-                return int(val)
-        elif type == float:
-            return round(val, 2)
-        else:
-            pass
-        return val
 
     def normalize_data(
         self, df: pd.DataFrame, inplace: bool = False,
@@ -67,7 +52,11 @@ class FeatureMonitor:
             df[col] = df[col].apply(lambda x: -100 if x < 0 else x)
         # Handle categorical columns
         for col in categorical_features:
-            df[col] = df[col].apply(lambda x: self.MISSING if x in cate_missing_values else strip_vietnamese_accents(x).lower().strip())
+            df[col] = df[col].apply(
+                lambda x: self.MISSING
+                if x in cate_missing_values
+                else str_utils.remove_vn_diacritics(x).lower().strip()
+            )
 
         return df
 
@@ -77,12 +66,11 @@ class FeatureMonitor:
         n_bins=10
     ) -> Dict[str, np.ndarray]:
         numerical_features = list(df.select_dtypes([int, float]).columns)
-        int_features = list(df.select_dtypes([int]).columns)
-        float_features = list(df.select_dtypes([float]).columns)
+        int_features = set(df.select_dtypes([int]).columns)
+        float_features = set(df.select_dtypes([float]).columns)
         categorical_features = list(df.select_dtypes([object]).columns)
-        percentage = np.linspace(0, 100, n_bins + 1) / 100
         bin_thresholds = dict()
-        for f in numerical_features:
+        for f in [numerical_features]:
             series = df[f]
             series = series[(series > 0) & (~series.isna())]
             if len(series) == 0:
@@ -91,9 +79,9 @@ class FeatureMonitor:
             percentage = np.linspace(0, 100, n_bins + 1)
             bins = np.percentile(series, percentage)
             if f in int_features:
-                bins = [self.round(e, int) for e in bins]
+                bins = [num_utils.round(e, int) for e in bins]
             if f in float_features:
-                bins = [self.round(e, float) for e in bins]
+                bins = [num_utils.round(e, float) for e in bins]
 
             if bins[0] != 0:
                 bins = [0, *bins]
@@ -104,7 +92,7 @@ class FeatureMonitor:
         for f in categorical_features:
             series = df[f]
             bins = series.value_counts()[:n_bins].index.to_list()
-            bins = sorted(set([*bins, self.MISSING, self.OTHER]))
+            bins = sorted(set([self.MISSING, self.OTHER, *bins]))
             bin_thresholds[f] = bins
 
         return bin_thresholds
@@ -135,8 +123,8 @@ class FeatureMonitor:
         bin_thresholds: Dict[str, np.ndarray]
     ):
         hists = []
-        numerical_features = list(df.select_dtypes([int, float]).columns)
-        categorical_features = list(df.select_dtypes([object]).columns)
+        categorical_features = [k for k, v in bin_thresholds.items() if len(v) > 0 and isinstance(v[0], str)]
+        numerical_features = [k for k, v in bin_thresholds.items() if len(v) > 0 and not isinstance(v[0], str)]
 
         for f in numerical_features:
             series = df[f]
@@ -201,7 +189,8 @@ class FeatureMonitor:
             histogram = row["histogram"]
             total = np.sum(histogram)
             if row["type"] == "cate":
-                dist = zip(bins, histogram)
+                segment_label = [". ".join(e) for e in zip(str_utils.UPPER_ALPHABET, bins)]
+                dist = zip(segment_label, histogram)
             if row["type"] == "num":
                 bins = [round(float(e), 2) for e in row["bins"]]
                 bins = [int(e) if e.is_integer() else e for e in bins]
@@ -212,7 +201,7 @@ class FeatureMonitor:
                     segment_label.append(f"[{s}, {e})")
                 if len(segment_label) > 0:
                     segment_label[-1] = segment_label[-1].replace(")", "]")
-                segment_label = [f"(-inf, {bins[0]})", *segment_label, f"({bins[-1]}, +inf)"]
+                segment_label = [f"A. missing", *[". ".join(e) for e in zip(str_utils.UPPER_ALPHABET[2:], segment_label)], f"B. other"]
                 dist = zip(segment_label, histogram)
             for k, v in dist:
                 ls_row.append([
