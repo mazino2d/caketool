@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from google.cloud import bigquery
+from google.cloud.exceptions import NotFound
 from caketool.metric import psi_from_distribution
 from caketool.utils import str_utils, num_utils
 
@@ -173,7 +174,7 @@ class FeatureMonitor:
         for f in numerical_features:
             series = df[f]
             hist, _ = np.histogram(series, [-np.inf, *bin_thresholds[f], np.inf])
-            hists.append([f, "num", list(map(str, bin_thresholds[f])), hist.astype(np.int64).tolist()])
+            hists.append([f, "num", np.array(list(map(str, bin_thresholds[f]))), np.array(hist.astype(np.int64).tolist())])
         for f in categorical_features:
             series = df[f]
             bins = bin_thresholds[f]
@@ -183,7 +184,7 @@ class FeatureMonitor:
                 if bin_name not in vc.index:
                     vc.loc[bin_name] = 0
             vc = vc.reindex(bins)
-            hists.append([f, "cate", vc.index.to_list(), vc.tolist()])
+            hists.append([f, "cate", np.array(vc.index.to_list()), np.array(vc.tolist())])
 
         return pd.DataFrame(hists, columns=["feature_name", "type", "bins", "histogram"])
 
@@ -218,7 +219,10 @@ class FeatureMonitor:
             clustering_fields=["dataset_id"]
         )
         table_id = f"{self.project}.{self.dataset}.{bq_table_name}"
-        self.bq_client.query(f"DELETE FROM {table_id} WHERE dataset_id = '{dataset_id}'").result()
+        try:
+            self.bq_client.query(f"DELETE FROM {table_id} WHERE dataset_id = '{dataset_id}'").result()
+        except NotFound:
+            print(f"'{table_id}' is not found. It will be created!")
         self.bq_client.load_table_from_dataframe(df_distribution, table_id, job_config=job_config)
 
     def load_distribution(
@@ -368,12 +372,15 @@ class FeatureMonitor:
             clustering_fields=["score_type", "dataset_type", "version_type", "version"]
         )
         table_id = f"{self.project}.{self.dataset}.{bq_table_name}"
-        self.bq_client.query(f"""
-            DELETE FROM {table_id}
-            WHERE score_type = '{score_type}'
-            AND dataset_type = '{dataset_type}'
-            AND version_type = '{version_type}'
-            AND version = '{version}'
-        """).result()
+        try:
+            self.bq_client.query(f"""
+                DELETE FROM {table_id}
+                WHERE score_type = '{score_type}'
+                AND dataset_type = '{dataset_type}'
+                AND version_type = '{version_type}'
+                AND version = '{version}'
+            """).result()
+        except NotFound as e:
+            print(f"'{table_id}' is not found. It will be created!")
         self.bq_client.load_table_from_dataframe(df_looker, table_id, job_config=job_config)
         return df_looker
