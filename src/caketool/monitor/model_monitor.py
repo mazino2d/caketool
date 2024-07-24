@@ -67,6 +67,6 @@ class ModelMonitor:
             AND dataset_type = '{dataset_type}'
             AND version_type = '{version_type}'
             AND version = '{version}'
-        """)
+        """).result()
         self.bq_client.load_table_from_dataframe(df_looker, table_id, job_config=job_config)
         return df_looker
