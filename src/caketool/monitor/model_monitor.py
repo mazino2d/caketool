@@ -159,14 +159,8 @@ class ModelMonitor:
         for f in numerical_features:
             series = df[f]
             hist, _ = np.histogram(series, [-np.inf, *bin_thresholds[f], np.inf])
-            bins = [round(float(e), 2) for e in bin_thresholds[f]]
-            bins = [int(e) if e.is_integer() else e for e in bins]
-            segments = []
-            for s, e in zip(bins[:-1], bins[1:]):
-                segments.append(f"[{s}, {e})")
-            if len(segments) > 0:
-                segments[-1] = segments[-1].replace(")", "]")
-            segments = [f"A. missing", *[". ".join(e) for e in zip(str_utils.UPPER_ALPHABET[2:], segments)], f"B. other"]
+            segments = [f"missing", *self._cvt_bins2labels(bin_thresholds[f]), f"other"]
+            segments = [". ".join(e) for e in zip(str_utils.UPPER_ALPHABET, segments)]
             hists.append([f, segments, hist, hist.sum(), hist / hist.sum()])
         for f in categorical_features:
             series = df[f]
@@ -213,8 +207,10 @@ class ModelMonitor:
         total = len(score)
         histogram = np.histogram(score, bins)[0]
         percent = histogram / total
+        segments = self._cvt_bins2labels(bins)
+        segments = [". ".join(e) for e in zip(str_utils.UPPER_ALPHABET, segments)]
         return pd.DataFrame({
-            "segment": list(map(str, bins[1:])),
+            "segment": segments,
             "count": histogram,
             "total": [total] * len(histogram),
             "percent": percent,
@@ -292,3 +288,12 @@ class ModelMonitor:
         df["utc_update_at"] = datetime.now()
         self._clear_data(table_id, score_type, dataset_type, version_type, version)
         return self.bq_client.load_table_from_dataframe(df, table_id, job_config=job_config).result()
+
+    def _cvt_bins2labels(self, bins: List[object]) -> List[str]:
+        if len(bins) <= 1:
+            return []
+        bins = [round(float(e), 2) for e in bins]
+        bins = [int(e) if e.is_integer() else e for e in bins]
+        segments = ["[" + ", ".join(map(str, e)) + ")" for e in zip(bins[:-1], bins[1:])]
+        segments[-1] = segments[-1][:-1] + "]"
+        return segments
