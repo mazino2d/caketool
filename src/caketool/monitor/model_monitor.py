@@ -107,7 +107,7 @@ class ModelMonitor:
         version_type: str,
         version: str,
         df_bins: pd.DataFrame,
-        bq_table_name="dev_feature_bins"
+        bq_table_name="feature_bins"
     ):
         df_bins["bins"] = df_bins["bins"].apply(lambda ls: list(map(str, ls)))
         self._store_df(
@@ -125,7 +125,7 @@ class ModelMonitor:
         dataset_type: str,
         version_type: str,
         version: str,
-        bq_table_name="dev_feature_bins"
+        bq_table_name="feature_bins"
     ):
         table_id = f"{self.project}.{self.dataset}.{bq_table_name}"
         df_bins: pd.DataFrame = self.bq_client.query(f"""
@@ -189,7 +189,7 @@ class ModelMonitor:
         version_type: str,
         version: str,
         df_distribution,
-        bq_table_name="dev_feature_distribution"
+        bq_table_name="feature_distribution"
     ) -> None:
         self._store_df(
             score_type, dataset_type, version_type, version, df_distribution, bq_table_name,
@@ -227,7 +227,7 @@ class ModelMonitor:
         version_type: str,
         version: str,
         df_distribution: pd.DataFrame,
-        bq_table_name="dev_score_distribution"
+        bq_table_name="score_distribution"
     ) -> None:
         self._store_df(
             score_type, dataset_type, version_type, version, df_distribution, bq_table_name,
@@ -278,7 +278,8 @@ class ModelMonitor:
         job_config = bigquery.LoadJobConfig(
             schema=[
                 *self.ID_SCHEMA,
-                *schema
+                *schema,
+                bigquery.SchemaField("utc_update_at", "DATETIME", "REQUIRED")
             ],
             clustering_fields=self.ID_COLS,
         )
