@@ -2,4 +2,9 @@
     "autopep8.args": [
         "--max-line-length", "300"
     ],
+    "python.testing.pytestArgs": [
+        "tests"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
 }

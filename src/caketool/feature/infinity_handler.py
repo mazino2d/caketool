@@ -1,4 +1,3 @@
-from typing import List
 from numbers import Number
 from sklearn.base import BaseEstimator, TransformerMixin
 import numpy as np
@@ -19,7 +18,7 @@ class InfinityHandler(TransformerMixin, BaseEstimator):
         The value to replace infinite values with.
     """
 
-    def __init__(self, cols: List[str], def_val: Number = -100):
+    def __init__(self, def_val: Number = -100):
         """
         Initialize the InfinityHandler with the specified columns and default value.
 
@@ -31,7 +30,6 @@ class InfinityHandler(TransformerMixin, BaseEstimator):
         def_val : Number, optional (default=-100)
             The value to replace infinite values with.
         """
-        self.cols = cols
         self.def_val = def_val
 
     def fit(self, X, y=None):
@@ -69,7 +67,7 @@ class InfinityHandler(TransformerMixin, BaseEstimator):
         X : pd.DataFrame
             The transformed DataFrame with infinite values replaced.
         """
-        columns = list(set(self.cols).intersection(X.columns))
+        columns = list(set(X.columns).difference(X.select_dtypes([object]).columns))
         for col in list(set(X[columns].columns.to_series()[np.isinf(X[columns]).any()])):
             X[col] = X[col].apply(lambda x: self.def_val if x == np.inf else x)
         return X
