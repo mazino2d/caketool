@@ -10,14 +10,18 @@ class FeatureEncoder(TransformerMixin, BaseEstimator):
         self.encoder_class = get_class(encoder_name)
         self.encoder: BaseEncoder = self.encoder_class(**args)
     
-    def fit(self, X, y=None):
-        self.encoder.fit(X, y)
+    def fit(self, X: pd.DataFrame, y=None):
+        object_cols = list(X.select_dtypes(['object']).columns)
+        if len(object_cols) == 0:
+            self.encoder = None
+            return self
+        self.encoder.fit(X[object_cols], y)
         return self
     
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        object_cols = X.select_dtypes(['object']).columns
-        if len(object_cols) == 0:
+        if self.encoder is None:
             return X
-        X_enc = self.encoder.transform(X[object_cols])
-        X = X.drop(columns=object_cols)
-        return pd.concat([X, X_enc], axis = 1)
+        X = X.copy()
+        object_cols = list(X.select_dtypes(['object']).columns)
+        X[object_cols] = self.encoder.transform(X[object_cols])
+        return X
