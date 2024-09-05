@@ -144,5 +144,5 @@ class UnivariateFeatureRemover(FeatureRemover):
             "f_statistic": 0,
             "p_values": 1,
         })
-        self.droped_cols = list(self.feature_importance[self.feature_importance["p_values"] <= self.threshold]["features"])
+        self.droped_cols = list(self.feature_importance[self.feature_importance["p_values"] > self.threshold]["features"])
         return self

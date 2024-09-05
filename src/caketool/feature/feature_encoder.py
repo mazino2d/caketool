@@ -13,13 +13,12 @@ class FeatureEncoder(TransformerMixin, BaseEstimator):
     def fit(self, X: pd.DataFrame, y=None):
         object_cols = list(X.select_dtypes(['object']).columns)
         if len(object_cols) == 0:
-            self.encoder = None
             return self
         self.encoder.fit(X[object_cols], y)
         return self
     
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        if self.encoder is None:
+        if self.encoder is None or self.encoder.cols is None:
             return X
         X = X.copy()
         object_cols = list(X.select_dtypes(['object']).columns)
