@@ -2,7 +2,7 @@ from google.cloud import bigquery
 
 ONE_GIGABYTE = (1024 ** 3)
 ONE_TERABYTE = (1024 * ONE_GIGABYTE)
-DEFAULT_BQ_CLI = bigquery.Client
+DEFAULT_BQ_CLI = bigquery.Client()
 
 def safety_query(
         query_statement: str, 
