@@ -7,7 +7,6 @@ from sklearn.model_selection import RepeatedStratifiedKFold
 from sklearn.pipeline import Pipeline
 from tqdm import tqdm
 
-from caketool.metric.classification_metric import gini
 set_config(transform_output = "pandas")
 from caketool.feature.feature_encoder import FeatureEncoder
 from caketool.feature.feature_remover import ColinearFeatureRemover, UnivariateFeatureRemover
@@ -16,7 +15,7 @@ from sklearn.base import BaseEstimator, RegressorMixin
 import xgboost as xgb 
 
 DEFAULT_PARAM = {
-     'feature_encoder': {
+    'feature_encoder': {
         "encoder_name": "category_encoders.TargetEncoder",
     },
     'colinear_feature_remover': {
@@ -38,7 +37,6 @@ DEFAULT_PARAM = {
         'gamma': 0.5,
         'subsample': 0.65,
         'min_child_weight': 16,
-        'rate_drop': 0,
         'colsample_bytree': 0.5, 
         'scale_pos_weight': 1, 
         'nthread': 4,
@@ -66,11 +64,13 @@ class BoostTree(BaseEstimator, RegressorMixin):
             ('model', self.model),
         ])
 
-    def fit(self, X, y, X_val, y_val, verbose=False):
+    def fit(self, X, y, eval_set=None, verbose=False):
         self.preprocess.fit(X, y)
+        if eval_set is not None and len(eval_set) > 0:
+            eval_set = [(self.preprocess.transform(s[0]), s[1]) for s in eval_set]
         self.pipeline.fit(
             X, y,
-            model__eval_set = [(self.preprocess.transform(X_val), y_val)],
+            model__eval_set = eval_set,
             model__verbose = verbose,
         )
         return self
@@ -97,17 +97,17 @@ class BoostTree(BaseEstimator, RegressorMixin):
     def get_feature_names(self) -> List[str]:
         return self.model.get_booster().feature_names
 
-    def fit_oof(X, y, groups=None, params=DEFAULT_PARAM, n_splits=5, n_repeats=2, random_state=42):
+    def fit_oof(X, y, groups=None, params=DEFAULT_PARAM, n_splits=5, n_repeats=1, random_state=42):
         skf = RepeatedStratifiedKFold(n_splits=n_splits, n_repeats=n_repeats, random_state=random_state)
         oof_predictions = []
         oof_labels = []
         models = []
 
-        for _, (train_idx, val_idx) in tqdm(enumerate(skf.split(X, y, groups))):
+        for _, (train_idx, val_idx) in tqdm(enumerate(skf.split(X, groups))):
             X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
             y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
             model = BoostTree(params)
-            model.fit(X_train, y_train, X_val, y_val)
+            model.fit(X_train, y_train, eval_set=[(X_val, y_val)])
             val_pred = model.predict_proba(X_val)
             models.append(model)
             oof_predictions.append(val_pred)
