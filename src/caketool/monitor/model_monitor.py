@@ -125,11 +125,10 @@ class ModelMonitor:
         dataset_type: str,
         version_type: str,
         version: str,
-        bq_table_name="feature_bins"
+        bq_table_name: str,
     ):
-        table_id = f"{self.project}.{self.dataset}.{bq_table_name}"
         df_bins: pd.DataFrame = self.bq_client.query(f"""
-            SELECT feature_name, type, bins FROM {table_id}
+            SELECT feature_name, type, bins FROM {bq_table_name}
             WHERE score_type = '{score_type}'
             AND dataset_type = '{dataset_type}'
             AND version_type = '{version_type}'
@@ -279,15 +278,14 @@ class ModelMonitor:
             ],
             clustering_fields=self.ID_COLS,
         )
-        table_id = f"{self.project}.{self.dataset}.{bq_table_name}"
         df = df.copy()
         df["score_type"] = score_type
         df["dataset_type"] = dataset_type
         df["version_type"] = version_type
         df["version"] = version
         df["utc_update_at"] = datetime.now()
-        self._clear_data(table_id, score_type, dataset_type, version_type, version)
-        return self.bq_client.load_table_from_dataframe(df, table_id, job_config=job_config).result()
+        self._clear_data(bq_table_name, score_type, dataset_type, version_type, version)
+        return self.bq_client.load_table_from_dataframe(df, bq_table_name, job_config=job_config).result()
 
     def _cvt_bins2labels(self, bins: List[object]) -> List[str]:
         if len(bins) <= 1:
