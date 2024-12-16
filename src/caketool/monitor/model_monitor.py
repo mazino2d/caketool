@@ -4,7 +4,7 @@ import numpy as np
 from datetime import datetime
 from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
-from caketool.utils import str_utils, num_utils
+from caketool.utils import str_utils, num_utils, arr_utils
 
 
 class ModelMonitor:
@@ -198,11 +198,10 @@ class ModelMonitor:
     def calc_score_distribution(
             self,
             score: np.ndarray,
-            bins=[
-                0, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.125,
-                0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1
-            ]):
-
+            bins: Union[int, List[float]]=10
+        ):
+        if type(bins) == int:
+            bins = arr_utils.create_percentile_bins(score, bins)
         total = len(score)
         histogram = np.histogram(score, bins)[0]
         percent = histogram / total
