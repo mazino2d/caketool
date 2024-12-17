@@ -1,5 +1,5 @@
 """
-- caketool v1.5.0
+- caketool v1.6.0
 """
 
 
