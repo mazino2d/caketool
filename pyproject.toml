@@ -16,16 +16,17 @@ classifiers = [
 ]
 keywords = ["cake", "ds", "mlops"]
 dependencies = [
-    "google-cloud-aiplatform",
-    "google-cloud-storage",
-    "pandas",
-    "numpy",
-    "xgboost",
-    "scikit-learn",
-    "statsmodels",
-    "category_encoders",
-    "catboost",
-    "tqdm",
+    # "google-cloud-aiplatform",
+    # "google-cloud-storage",
+    # "pandas",
+    # "numpy",
+    # "xgboost",
+    # "scikit-learn",
+    # "statsmodels",
+    # "category_encoders",
+    # "catboost",
+    # "tqdm",
+    # "pyspark==3.3.4"
 ]
 requires-python = ">=3.7"
 
