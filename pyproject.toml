@@ -45,6 +45,7 @@ write_to = "src/caketool/_version.py"
 line-length = 120
 target-version = "py310"
 src = ["src"]
+exclude = ["demos/"]
 
 [tool.ruff.lint]
 select = [
