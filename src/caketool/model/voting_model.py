@@ -13,7 +13,7 @@ class VotingModel(BaseEstimator, RegressorMixin):
     ----------
     estimators : List[BaseEstimator]
         A list of scikit-learn estimators that will be used to make predictions.
-        Each estimator in the list should implement the `predict` method, and if `predict_proba` 
+        Each estimator in the list should implement the `predict` method, and if `predict_proba`
         is to be used, they should also implement the `predict_proba` method.
     """
 
@@ -31,7 +31,7 @@ class VotingModel(BaseEstimator, RegressorMixin):
 
     def fit(self, X, y=None):
         """
-        Fit the model. This method does not perform any fitting and is included to 
+        Fit the model. This method does not perform any fitting and is included to
         maintain compatibility with scikit-learn's interface.
 
         Parameters
@@ -68,8 +68,8 @@ class VotingModel(BaseEstimator, RegressorMixin):
 
     def predict_proba(self, X: pd.DataFrame):
         """
-        Predict class probabilities using the model by averaging the probability 
-        predictions of all base estimators. This method is applicable only if all 
+        Predict class probabilities using the model by averaging the probability
+        predictions of all base estimators. This method is applicable only if all
         base estimators implement `predict_proba`.
 
         Parameters

@@ -1,2 +1,2 @@
-from .adversarial_test import AdversarialModel
-from .model_monitor import ModelMonitor
+from .adversarial_test import AdversarialModel as AdversarialModel
+from .model_monitor import ModelMonitor as ModelMonitor

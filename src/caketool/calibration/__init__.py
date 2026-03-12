@@ -1,1 +1,1 @@
-from .normal_norm import calibrate_score_to_normal
+from .normal_norm import calibrate_score_to_normal as calibrate_score_to_normal

@@ -1,1 +1,1 @@
-from .experiment_tracker import ExperimentTracker
+from .experiment_tracker import ExperimentTracker as ExperimentTracker
