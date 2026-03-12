@@ -1,7 +1,9 @@
 import pandas as pd
-from catboost import CatBoostClassifier
+import xgboost as xgb
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
+
+from caketool.model.feature_encoder import FeatureEncoder
 
 
 class AdversarialModel:
@@ -13,8 +15,8 @@ class AdversarialModel:
 
     Attributes:
     -----------
-    model : object, optional
-        A machine learning classifier used to detect drift (default is CatBoostClassifier).
+    model : XGBClassifier
+        XGBoost classifier used to detect drift.
     auc_score : float
         The ROC AUC score representing the ability of the model to distinguish
         between the two datasets (high score indicates drift).
@@ -27,17 +29,10 @@ class AdversarialModel:
         Displays the ROC AUC score and the top N most important features contributing to drift.
     """
 
-    def __init__(self, model=None) -> None:
-        """
-        Initializes the AdversarialModel with a given model or a default
-        CatBoostClassifier if none is provided.
-
-        Parameters:
-        -----------
-        model : object, optional
-            A machine learning classifier (default is CatBoostClassifier).
-        """
-        self.model = model or CatBoostClassifier(verbose=False)
+    def __init__(self) -> None:
+        """Initializes the AdversarialModel with XGBClassifier and TargetEncoder."""
+        self.model = xgb.XGBClassifier(verbosity=0, eval_metric="auc")
+        self.encoder = FeatureEncoder("category_encoders.TargetEncoder")
         self.auc_score = -1
 
     def fit(
@@ -87,14 +82,19 @@ class AdversarialModel:
             data_adversarial[features],
             data_adversarial["label"],
             test_size=0.2,
-            stratify=data_adversarial[groups_col].apply(lambda x: "_".join(map(str, x)), axis=1)
+            stratify=data_adversarial[groups_col].apply(lambda x: "_".join(map(str, x)), axis=1),
         )
+
+        # Encode categorical features
+        X_train = self.encoder.fit_transform(X_train, y_train)
+        X_val = self.encoder.transform(X_val)
+        self.feature_names_ = X_train.columns.tolist()
 
         # Fitting the model
         self.model.fit(X_train, y_train)
 
         # Calculating the ROC AUC score to measure the ability to detect drift
-        self.auc_score = roc_auc_score(y_val, self.model.predict(X_val))
+        self.auc_score = roc_auc_score(y_val, self.model.predict_proba(X_val)[:, 1])
 
     def show(self, n_features=5):
         """
@@ -113,4 +113,10 @@ class AdversarialModel:
         """
         print(f"ROC AUC: {self.auc_score:02f}")
         print(f"Top {n_features} important feature(s) contributing to drift:")
-        print(f"{self.model.get_feature_importance(prettified=True).head(n_features)}")
+        importance_df = pd.DataFrame(
+            {
+                "feature": self.feature_names_,
+                "importance": self.model.feature_importances_,
+            }
+        ).sort_values("importance", ascending=False)
+        print(importance_df.head(n_features).to_string(index=False))

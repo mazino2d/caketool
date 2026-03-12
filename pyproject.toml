@@ -15,22 +15,33 @@ classifiers = [
 ]
 keywords = ["cake", "ds", "mlops"]
 dependencies = [
-    # "google-cloud-aiplatform",
-    # "google-cloud-storage",
-    # "pandas",
-    # "numpy",
-    # "xgboost",
-    # "scikit-learn",
-    # "statsmodels",
-    # "category_encoders",
-    # "catboost",
-    # "tqdm",
-    # "pyspark==3.3.4"
+    "numpy",
+    "pandas",
+    "scikit-learn",
+    "scipy",
+    "tqdm",
+    "xgboost",
+    "category_encoders",
 ]
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 
 [project.optional-dependencies]
-dev = ["build", "twine", "pip-tools", "pytest", "ipykernel", "ruff", "pre-commit"]
+onprem = ["mlflow"]
+gcp = ["google-cloud-aiplatform", "google-cloud-bigquery"]
+all = [
+    "mlflow",
+    "google-cloud-aiplatform",
+    "google-cloud-bigquery",
+]
+dev = [
+    "build",
+    "twine",
+    "pip-tools",
+    "pytest",
+    "ipykernel",
+    "ruff",
+    "pre-commit",
+]
 
 [project.scripts]
 caketool = "caketool.__main__:main"
