@@ -6,8 +6,17 @@
 conda create -n caketool python=3.10
 conda activate caketool
 pip install -e ".[dev]"
-pip-compile pyproject.toml
-pip-sync
+pre-commit install
+```
+
+- Linting
+
+Pre-commit hooks automatically run ruff on commit. To run manually:
+
+```bash
+ruff check src/ tests/ --fix  # Lint and auto-fix
+ruff format src/ tests/       # Format code
+pre-commit run --all-files    # Run all hooks
 ```
 
 - Publish libs

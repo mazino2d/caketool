@@ -9,6 +9,7 @@ Caketool is a Python MLOps library providing reusable tools for feature engineer
 conda create -n caketool python=3.10
 conda activate caketool
 pip install -e ".[dev]"
+pre-commit install
 
 # Run tests
 pytest tests/
@@ -32,6 +33,9 @@ ruff format src/ tests/
 | `utils/` | Helpers for arrays, strings, numbers, phone parsing, BigQuery |
 
 ## Code Conventions
+
+### Language
+- Use English only for all code: variable names, function names, class names, comments, docstrings, and commit messages
 
 ### Type Annotations
 - Use Python 3.10+ union syntax: `list | tuple | np.ndarray`

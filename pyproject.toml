@@ -30,7 +30,7 @@ dependencies = [
 requires-python = ">=3.7"
 
 [project.optional-dependencies]
-dev = ["build", "twine", "pip-tools", "pytest", "ipykernel", "ruff"]
+dev = ["build", "twine", "pip-tools", "pytest", "ipykernel", "ruff", "pre-commit"]
 
 [project.scripts]
 caketool = "caketool.__main__:main"
