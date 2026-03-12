@@ -1,5 +1,6 @@
 import pickle
-from typing import Dict, Union, Literal
+from typing import Literal
+
 from google.cloud import aiplatform, storage
 
 
@@ -63,7 +64,7 @@ class ExperimentTracker:
                 schema_title="system.ContainerExecution"
             )
 
-    def log_params(self, params: Dict[str, Union[float, int, str]]):
+    def log_params(self, params: dict[str, float | int | str]):
         """
         Log parameters to the experiment run.
 
@@ -74,7 +75,7 @@ class ExperimentTracker:
         """
         self.experiment_run.log_params(params)
 
-    def log_metrics(self, metrics: Dict[str, Union[float, int, str]]):
+    def log_metrics(self, metrics: dict[str, float | int | str]):
         """
         Log metrics to the experiment run.
 

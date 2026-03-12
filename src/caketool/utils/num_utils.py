@@ -1,15 +1,14 @@
-from typing import Union
 
 
-def round(val: Union[int, float], type: type = None):
-    if type == int or isinstance(val, int):
+def round(val: int | float, type: type = None):
+    if type is int or isinstance(val, int):
         num_digits = len(str(int(val)))
         round_to = (num_digits - 2) * -1
         if num_digits > 2:
             return round(val, round_to)
         else:
             return int(val)
-    elif type == float or isinstance(val, int):
+    elif type is float or isinstance(val, float):
         return round(val, 2)
     else:
         pass

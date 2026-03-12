@@ -30,7 +30,7 @@ dependencies = [
 requires-python = ">=3.7"
 
 [project.optional-dependencies]
-dev = ["build", "twine", "pip-tools", "pytest", "ipykernel"]
+dev = ["build", "twine", "pip-tools", "pytest", "ipykernel", "ruff"]
 
 [project.scripts]
 caketool = "caketool.__main__:main"
@@ -40,3 +40,21 @@ Homepage = "https://github.com/cake-digital-bank"
 
 [tool.setuptools_scm]
 write_to = "src/caketool/_version.py"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # flake8-bugbear
+    "UP",    # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]

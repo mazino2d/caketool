@@ -1,5 +1,6 @@
 import re
 
+
 def norm_vn_phone(phone: str):
     if not phone:
         return None

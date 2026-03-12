@@ -1,7 +1,8 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import roc_auc_score
 from catboost import CatBoostClassifier
+from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import train_test_split
+
 
 class AdversarialModel:
     """
@@ -15,7 +16,7 @@ class AdversarialModel:
     model : object, optional
         A machine learning classifier used to detect drift (default is CatBoostClassifier).
     auc_score : float
-        The ROC AUC score representing the ability of the model to distinguish 
+        The ROC AUC score representing the ability of the model to distinguish
         between the two datasets (high score indicates drift).
 
     Methods:
@@ -25,10 +26,10 @@ class AdversarialModel:
     show(n_features=5):
         Displays the ROC AUC score and the top N most important features contributing to drift.
     """
-    
+
     def __init__(self, model=None) -> None:
         """
-        Initializes the AdversarialModel with a given model or a default 
+        Initializes the AdversarialModel with a given model or a default
         CatBoostClassifier if none is provided.
 
         Parameters:
@@ -43,12 +44,12 @@ class AdversarialModel:
         self,
         df1: pd.DataFrame,
         df2: pd.DataFrame,
-        groups_col=["label"],
+        groups_col=None,
         features=None,
     ):
         """
         Fits the adversarial classifier to detect drift between two datasets by
-        differentiating between them. If the model can classify data points 
+        differentiating between them. If the model can classify data points
         from df1 and df2 effectively, this indicates that drift has occurred.
 
         Parameters:
@@ -61,11 +62,13 @@ class AdversarialModel:
             Column(s) used for stratification during the train-test split (default is ["label"]).
         features : list, optional
             List of feature names to be used for training (default is the intersection of the columns in both datasets).
-        
+
         Returns:
         --------
         None
         """
+        if groups_col is None:
+            groups_col = ["label"]
         # Concatenating the two datasets and assigning labels (0 for df1, 1 for df2)
         data_adversarial = pd.concat(
             [
@@ -74,29 +77,29 @@ class AdversarialModel:
             ],
             ignore_index=True,
         )
-        
+
         # If features are not provided, use the common columns between the two datasets
-        if features == None:
+        if features is None:
             features = list(set(df1.columns).intersection(df2.columns))
-        
+
         # Splitting the data into training and validation sets using stratified sampling
         X_train, X_val, y_train, y_val = train_test_split(
-            data_adversarial[features], 
-            data_adversarial["label"], 
-            test_size=0.2, 
+            data_adversarial[features],
+            data_adversarial["label"],
+            test_size=0.2,
             stratify=data_adversarial[groups_col].apply(lambda x: "_".join(map(str, x)), axis=1)
         )
-        
+
         # Fitting the model
         self.model.fit(X_train, y_train)
-        
+
         # Calculating the ROC AUC score to measure the ability to detect drift
         self.auc_score = roc_auc_score(y_val, self.model.predict(X_val))
 
     def show(self, n_features=5):
         """
         Displays the ROC AUC score of the model, which represents the ability
-        to detect drift between the two datasets. It also shows the top N 
+        to detect drift between the two datasets. It also shows the top N
         important features contributing to drift detection.
 
         Parameters:

@@ -1,7 +1,8 @@
 from numbers import Number
-from sklearn.base import BaseEstimator, TransformerMixin
+
 import numpy as np
 import pandas as pd
+from sklearn.base import BaseEstimator, TransformerMixin
 
 
 class InfinityHandler(TransformerMixin, BaseEstimator):

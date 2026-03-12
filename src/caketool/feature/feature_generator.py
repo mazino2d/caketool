@@ -1,10 +1,10 @@
-from typing import List
 import unicodedata
 import warnings
+
 import pandas as pd
-from pyspark.sql import DataFrame as SparkDataFrame
 import pyspark.sql.functions as F
 import pyspark.sql.types as T
+from pyspark.sql import DataFrame as SparkDataFrame
 from pyspark.sql.window import Window
 
 warnings.filterwarnings("ignore")
@@ -16,14 +16,14 @@ def generate_features_by_window(
     client_id_col: str = "cake_user_id",
     report_date_col: str = "report_date",
     fs_event_timestamp: str = "fs_event_timestamp",
-    key_cols: List[str] = ["__all__"],
-    lookback_days: List[int] = [0],
-    numeric_cols: List[str] = [],
-    string_cols: List[str] = [],
-    categorical_cols: List[str] = [],
-    list_cols: List[str] = [],
-    date_cols: List[str] = [],
-    boolean_cols: List[str] = [],
+    key_cols: tuple[str, ...] = ("__all__",),
+    lookback_days: tuple[int, ...] = (0,),
+    numeric_cols: tuple[str, ...] = (),
+    string_cols: tuple[str, ...] = (),
+    categorical_cols: tuple[str, ...] = (),
+    list_cols: tuple[str, ...] = (),
+    date_cols: tuple[str, ...] = (),
+    boolean_cols: tuple[str, ...] = (),
     feature_prefix: str = "ft",
     key_col_default: str = "all",
 ):

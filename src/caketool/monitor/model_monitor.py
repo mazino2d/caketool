@@ -1,10 +1,11 @@
-from typing import List, Set, Dict, Union
-import pandas as pd
-import numpy as np
 from datetime import datetime
+
+import numpy as np
+import pandas as pd
 from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
-from caketool.utils import str_utils, num_utils, arr_utils
+
+from caketool.utils import arr_utils, num_utils, str_utils
 
 
 class ModelMonitor:
@@ -24,14 +25,16 @@ class ModelMonitor:
 
     def normalize_data(
         self, df: pd.DataFrame, inplace: bool = False,
-        cate_missing_values: Set[str] = {'-1', '-100', 'unknown', ''}
+        cate_missing_values: set[str] | None = None
     ) -> pd.DataFrame:
+        if cate_missing_values is None:
+            cate_missing_values = {'-1', '-100', 'unknown', ''}
         if not inplace:
             df = df.copy()
         # Fill missing value
         df = df.fillna(-100)
         # Norm categorical feature type
-        categorical_features: List[str] = []
+        categorical_features: list[str] = []
         for col in df.columns:
             try:
                 df[col] = pd.to_numeric(df[col])
@@ -40,12 +43,12 @@ class ModelMonitor:
         df[categorical_features] = df[categorical_features].apply(lambda x: x.astype(str).str.lower())
 
         # Find numerical features
-        numerical_features: List[str] = df.select_dtypes([int, float]).columns
+        numerical_features: list[str] = df.select_dtypes([int, float]).columns
         # Handle infinity value
         for col in list(set(df[numerical_features].columns.to_series()[np.isinf(df[numerical_features]).any()])):
             df[col] = df[col].apply(lambda x: -100 if x == np.inf else x)
         # Norm float feature
-        float_features: List[str] = []
+        float_features: list[str] = []
         for col in numerical_features:
             if df[col].fillna(0).nunique() > round(df[col].fillna(0)).nunique():
                 float_features.append(col)
@@ -70,7 +73,7 @@ class ModelMonitor:
         self,
         df: pd.DataFrame,
         n_bins=10
-    ) -> Dict[str, List[Union[float, str]]]:
+    ) -> dict[str, list[float | str]]:
         if not self._check_norm(df):
             raise Exception("DataFrame has not been normalized yet. Please use self.normalize_data(df)")
         numerical_features = set(df.select_dtypes([int, float]).columns)
@@ -146,11 +149,11 @@ class ModelMonitor:
     def calc_feature_distribution(
         self,
         df: pd.DataFrame,
-        df_bins: Dict[str, np.ndarray]
+        df_bins: dict[str, np.ndarray]
     ) -> pd.DataFrame:
         if not self._check_norm(df):
             raise Exception("DataFrame has not been normalized yet. Please use self.normalize_data(df)")
-        bin_thresholds: Dict[str, np.ndarray] = dict(zip(df_bins.feature_name, df_bins.bins))
+        bin_thresholds: dict[str, np.ndarray] = dict(zip(df_bins.feature_name, df_bins.bins, strict=True))
         hists = []
         categorical_features = [k for k, v in bin_thresholds.items() if len(v) > 0 and isinstance(v[0], str)]
         numerical_features = [k for k, v in bin_thresholds.items() if len(v) > 0 and not isinstance(v[0], str)]
@@ -158,23 +161,23 @@ class ModelMonitor:
         for f in numerical_features:
             series = df[f]
             hist, _ = np.histogram(series, [-np.inf, *bin_thresholds[f], np.inf])
-            segments = [f"missing", *self._cvt_bins2labels(bin_thresholds[f]), f"other"]
-            segments = [". ".join(e) for e in zip(str_utils.UPPER_ALPHABET, segments)]
+            segments = ["missing", *self._cvt_bins2labels(bin_thresholds[f]), "other"]
+            segments = [". ".join(e) for e in zip(str_utils.UPPER_ALPHABET, segments, strict=False)]
             hists.append([f, segments, hist, hist.sum(), hist / hist.sum()])
         for f in categorical_features:
             series = df[f]
             bins = bin_thresholds[f]
-            series = series.apply(lambda x: x if x in bins else self.OTHER)
+            series = series.apply(lambda x, b=bins: x if x in b else self.OTHER)
             vc = series.value_counts()
             for bin_name in bins:
                 if bin_name not in vc.index:
                     vc.loc[bin_name] = 0
             vc = vc.reindex(bins)
-            segments = [". ".join(e) for e in zip(str_utils.UPPER_ALPHABET, bins)]
+            segments = [". ".join(e) for e in zip(str_utils.UPPER_ALPHABET, bins, strict=False)]
             hists.append([f, segments, vc, vc.sum(), vc / vc.sum()])
 
         return pd.DataFrame(hists, columns=["feature_name", "segment", "count", "total", "percent"]).explode(["segment", "count", "percent"])
-    
+
     def store_feature_distribution(
         self,
         score_type: str,
@@ -196,24 +199,24 @@ class ModelMonitor:
         )
 
     def calc_score_distribution(
-            self,
-            score: np.ndarray,
-            bins: Union[int, List[float]]=10
-        ):
-        if type(bins) == int:
+        self,
+        score: np.ndarray,
+        bins: int | list[float] = 10
+    ):
+        if isinstance(bins, int):
             bins = arr_utils.create_percentile_bins(score, bins)
         total = len(score)
         histogram = np.histogram(score, bins)[0]
         percent = histogram / total
         segments = self._cvt_bins2labels(bins)
-        segments = [". ".join(e) for e in zip(str_utils.UPPER_ALPHABET, segments)]
+        segments = [". ".join(e) for e in zip(str_utils.UPPER_ALPHABET, segments, strict=False)]
         return pd.DataFrame({
             "segment": segments,
             "count": histogram,
             "total": [total] * len(histogram),
             "percent": percent,
         })
-    
+
     def store_score_distribution(
         self,
         score_type: str,
@@ -232,12 +235,12 @@ class ModelMonitor:
                 bigquery.SchemaField("percent", 'FLOAT', 'REQUIRED'),
             ]
         )
-    
+
     def _check_norm(self, df: pd.DataFrame):
         try:
-            if df.__is_norm == True:
+            if df.__is_norm:
                 return True
-        except Exception as e:
+        except Exception:
             return False
 
     def _clear_data(
@@ -256,7 +259,7 @@ class ModelMonitor:
                 AND version_type = '{version_type}'
                 AND version = '{version}'
             """).result()
-        except NotFound as e:
+        except NotFound:
             print(f"'{full_table_id}' is not found.")
 
     def _store_df(
@@ -267,7 +270,7 @@ class ModelMonitor:
         version: str,
         df: pd.DataFrame,
         bq_table_name: str,
-        schema: List[bigquery.SchemaField]
+        schema: list[bigquery.SchemaField]
     ):
         job_config = bigquery.LoadJobConfig(
             schema=[
@@ -286,11 +289,11 @@ class ModelMonitor:
         self._clear_data(bq_table_name, score_type, dataset_type, version_type, version)
         return self.bq_client.load_table_from_dataframe(df, bq_table_name, job_config=job_config).result()
 
-    def _cvt_bins2labels(self, bins: List[object]) -> List[str]:
+    def _cvt_bins2labels(self, bins: list[object]) -> list[str]:
         if len(bins) <= 1:
             return []
         bins = [round(float(e), 2) for e in bins]
         bins = [int(e) if e.is_integer() else e for e in bins]
-        segments = ["[" + ", ".join(map(str, e)) + ")" for e in zip(bins[:-1], bins[1:])]
+        segments = ["[" + ", ".join(map(str, e)) + ")" for e in zip(bins[:-1], bins[1:], strict=True)]
         segments[-1] = segments[-1][:-1] + "]"
         return segments

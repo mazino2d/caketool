@@ -1,4 +1,3 @@
-from typing import List
 
 import numpy as np
 import pandas as pd
@@ -18,7 +17,7 @@ class VotingModel(BaseEstimator, RegressorMixin):
         is to be used, they should also implement the `predict_proba` method.
     """
 
-    def __init__(self, estimators: List[BaseEstimator]):
+    def __init__(self, estimators: list[BaseEstimator]):
         """
         Initialize the VotingModel with a list of base estimators.
 

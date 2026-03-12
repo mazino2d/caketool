@@ -1,18 +1,20 @@
-from typing import Dict, List
+
 import numpy as np
 import pandas as pd
+import xgboost as xgb
 from sklearn import set_config
+from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.feature_selection import f_classif
 from sklearn.model_selection import RepeatedStratifiedKFold
 from sklearn.pipeline import Pipeline
 from tqdm import tqdm
 
-set_config(transform_output = "pandas")
 from caketool.feature.feature_encoder import FeatureEncoder
 from caketool.feature.feature_remover import ColinearFeatureRemover, UnivariateFeatureRemover
 from caketool.feature.infinity_handler import InfinityHandler
-from sklearn.base import BaseEstimator, RegressorMixin
-import xgboost as xgb 
+
+set_config(transform_output="pandas")
+
 
 DEFAULT_PARAM = {
     'feature_encoder': {
@@ -37,15 +39,16 @@ DEFAULT_PARAM = {
         'gamma': 0.5,
         'subsample': 0.65,
         'min_child_weight': 16,
-        'colsample_bytree': 0.5, 
-        'scale_pos_weight': 1, 
+        'colsample_bytree': 0.5,
+        'scale_pos_weight': 1,
         'nthread': 4,
     }
 }
 
+
 class BoostTree(BaseEstimator, RegressorMixin):
-  
-    def __init__(self, param: Dict = DEFAULT_PARAM):
+
+    def __init__(self, param: dict = DEFAULT_PARAM):
         super().__init__()
         self.param = param
         feature_encoder = FeatureEncoder(**param["feature_encoder"])
@@ -70,8 +73,8 @@ class BoostTree(BaseEstimator, RegressorMixin):
             eval_set = [(self.preprocess.transform(s[0]), s[1]) for s in eval_set]
         self.pipeline.fit(
             X, y,
-            model__eval_set = eval_set,
-            model__verbose = verbose,
+            model__eval_set=eval_set,
+            model__verbose=verbose,
         )
         return self
 
@@ -93,8 +96,8 @@ class BoostTree(BaseEstimator, RegressorMixin):
                 feat_importance = fi_tb
 
         return feat_importance
-    
-    def get_feature_names(self) -> List[str]:
+
+    def get_feature_names(self) -> list[str]:
         return self.model.get_booster().feature_names
 
     def fit_oof(X, y, groups=None, params=DEFAULT_PARAM, n_splits=5, n_repeats=1, random_state=42):
@@ -112,12 +115,13 @@ class BoostTree(BaseEstimator, RegressorMixin):
             models.append(model)
             oof_predictions.append(val_pred)
             oof_labels.append(y_val)
-        
+
         return models, np.concatenate(oof_predictions), np.concatenate(oof_labels)
-    
+
+
 class EnsembleBoostTree(BaseEstimator, RegressorMixin):
-  
-    def __init__(self, estimators: List[BoostTree]):
+
+    def __init__(self, estimators: list[BoostTree]):
         self.estimators = estimators
 
     def predict(self, X: pd.DataFrame):
@@ -144,8 +148,8 @@ class EnsembleBoostTree(BaseEstimator, RegressorMixin):
                     feature_importance[score_type] = feature_importance[score_type + "_x"] + feature_importance[score_type + "_y"]
                 feature_importance = feature_importance[sub_fi.columns]
         return feature_importance
-    
-    def get_feature_names(self) -> List[str]:
+
+    def get_feature_names(self) -> list[str]:
         feature_names = set()
         for estimator in self.estimators:
             feature_names.update(estimator.get_feature_names())

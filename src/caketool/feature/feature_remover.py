@@ -1,4 +1,4 @@
-from typing import List
+
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -11,24 +11,24 @@ class FeatureRemover(TransformerMixin, BaseEstimator):
 
     Parameters
     ----------
-    droped_cols : List[str], optional (default=[])
-        List of column names to be removed.
+    droped_cols : tuple[str, ...], optional (default=())
+        Tuple of column names to be removed.
     """
 
-    def __init__(self, droped_cols: List[str] = []):
+    def __init__(self, droped_cols: tuple[str, ...] = ()):
         """
         Initialize the FeatureRemover with the specified columns to be removed.
 
         Parameters
         ----------
-        droped_cols : List[str], optional (default=[])
-            List of column names to be removed.
+        droped_cols : tuple[str, ...], optional (default=())
+            Tuple of column names to be removed.
         """
         self.droped_cols = droped_cols
 
     def fit(self, X, y=None):
         """
-        Fit the transformer. This method does not perform any fitting and is included 
+        Fit the transformer. This method does not perform any fitting and is included
         to maintain compatibility with scikit-learn's interface.
 
         Parameters
@@ -83,7 +83,7 @@ class ColinearFeatureRemover(FeatureRemover):
         correlation_threshold : float, optional (default=0.9)
             The correlation threshold above which features are considered collinear and are removed.
         """
-        super().__init__([])
+        super().__init__(())
         self.correlation_threshold = correlation_threshold
 
     def fit(self, X: pd.DataFrame, y: pd.Series = None):
@@ -107,7 +107,7 @@ class ColinearFeatureRemover(FeatureRemover):
         for col in X.columns:
             correlations.append(np.abs(y.corr(X[col])))
         df_clusters = pd.DataFrame(
-            zip(X.columns, correlations),
+            zip(X.columns, correlations, strict=True),
             columns=['feature', 'correlation']
         )
         df_clusters = df_clusters\
