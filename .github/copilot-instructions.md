@@ -35,7 +35,7 @@ ruff format src/ tests/
 ## Code Conventions
 
 ### Language
-- Use English only for all code: variable names, function names, class names, comments, docstrings, and commit messages
+- Use English only for all code, documentation, and content: variable names, function names, class names, comments, docstrings, commit messages, README, notebooks, and any other project files
 
 ### Type Annotations
 - Use Python 3.10+ union syntax: `list | tuple | np.ndarray`
