@@ -1,12 +1,13 @@
 from numbers import Number
-from sklearn.base import BaseEstimator, TransformerMixin
+
 import numpy as np
 import pandas as pd
+from sklearn.base import BaseEstimator, TransformerMixin
 
 
 class InfinityHandler(TransformerMixin, BaseEstimator):
     """
-    A transformer that handles infinite values in specified columns by replacing 
+    A transformer that handles infinite values in specified columns by replacing
     them with a default value.
 
     Parameters
@@ -34,7 +35,7 @@ class InfinityHandler(TransformerMixin, BaseEstimator):
 
     def fit(self, X, y=None):
         """
-        Fit the transformer. This method does not perform any fitting and is included 
+        Fit the transformer. This method does not perform any fitting and is included
         to maintain compatibility with scikit-learn's interface.
 
         Parameters
@@ -54,7 +55,7 @@ class InfinityHandler(TransformerMixin, BaseEstimator):
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         """
-        Transform the input DataFrame by replacing infinite values in the specified 
+        Transform the input DataFrame by replacing infinite values in the specified
         columns with the default value.
 
         Parameters

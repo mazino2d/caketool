@@ -4,12 +4,13 @@ ONE_GIGABYTE = (1024 ** 3)
 ONE_TERABYTE = (1024 * ONE_GIGABYTE)
 DEFAULT_BQ_CLI = bigquery.Client()
 
+
 def safety_query(
-        query_statement: str, 
-        client: bigquery.Client = DEFAULT_BQ_CLI, 
-        gb_limit=50, 
-        price_for_one_terabyte = 8.44
-    ) -> bigquery.QueryJob:
+    query_statement: str,
+    client: bigquery.Client = DEFAULT_BQ_CLI,
+    gb_limit=50,
+    price_for_one_terabyte=8.44
+) -> bigquery.QueryJob:
     """
     Query data from Big Query. Check the cost (Gb and $) before executing the query.
     If the data size exceeds the limitation, raise error.
@@ -23,6 +24,5 @@ def safety_query(
     print(f"This query will process {bytes_processed / ONE_TERABYTE * price_for_one_terabyte} dollars.")
     if gigabytes_processed >= gb_limit:
         raise ValueError(f"The data size exceeds the limitation >= {bytes_processed} GB")
-    query_job = client.query((query_statement))
+    query_job = client.query(query_statement)
     return query_job
- 

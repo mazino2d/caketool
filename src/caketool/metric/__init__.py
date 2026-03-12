@@ -1,3 +1,5 @@
-from .classification_metric import gini
-from .stability_metric import psi, psi_from_distribution
-from sklearn.metrics import *
+from sklearn.metrics import *  # noqa: F403
+
+from .classification_metric import gini as gini
+from .stability_metric import psi as psi
+from .stability_metric import psi_from_distribution as psi_from_distribution

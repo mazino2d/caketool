@@ -15,22 +15,33 @@ classifiers = [
 ]
 keywords = ["cake", "ds", "mlops"]
 dependencies = [
-    # "google-cloud-aiplatform",
-    # "google-cloud-storage",
-    # "pandas",
-    # "numpy",
-    # "xgboost",
-    # "scikit-learn",
-    # "statsmodels",
-    # "category_encoders",
-    # "catboost",
-    # "tqdm",
-    # "pyspark==3.3.4"
+    "numpy",
+    "pandas",
+    "scikit-learn",
+    "scipy",
+    "tqdm",
+    "xgboost",
+    "category_encoders",
 ]
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 
 [project.optional-dependencies]
-dev = ["build", "twine", "pip-tools", "pytest", "ipykernel"]
+onprem = ["mlflow"]
+gcp = ["google-cloud-aiplatform", "google-cloud-bigquery"]
+all = [
+    "mlflow",
+    "google-cloud-aiplatform",
+    "google-cloud-bigquery",
+]
+dev = [
+    "build",
+    "twine",
+    "pip-tools",
+    "pytest",
+    "ipykernel",
+    "ruff",
+    "pre-commit",
+]
 
 [project.scripts]
 caketool = "caketool.__main__:main"
@@ -40,3 +51,22 @@ Homepage = "https://github.com/cake-digital-bank"
 
 [tool.setuptools_scm]
 write_to = "src/caketool/_version.py"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src"]
+exclude = ["demos/"]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # flake8-bugbear
+    "UP",    # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]

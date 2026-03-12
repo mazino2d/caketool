@@ -1,6 +1,66 @@
+import functools
+import importlib
+
+
 def get_class(name: str):
-    components = name.split('.')
+    components = name.split(".")
     mod = __import__(components[0])
     for comp in components[1:]:
         mod = getattr(mod, comp)
     return mod
+
+
+def require_dependencies(*packages: str):
+    """
+    Decorator to check if required packages are installed before calling a function.
+
+    Parameters
+    ----------
+    *packages : str
+        Package names to check. Use dot notation for subpackages
+        (e.g., "google.cloud.aiplatform").
+
+    Returns
+    -------
+    Callable
+        Decorated function that checks dependencies before execution.
+
+    Raises
+    ------
+    ImportError
+        If any required package is not installed.
+
+    Examples
+    --------
+    >>> @require_dependencies("mlflow")
+    ... def train_with_mlflow():
+    ...     import mlflow
+    ...     # ...
+
+    >>> @require_dependencies("google.cloud.aiplatform", "google.cloud.storage")
+    ... def train_with_vertex():
+    ...     from google.cloud import aiplatform
+    ...     # ...
+    """
+
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            missing = []
+            for package in packages:
+                # Convert dot notation to top-level package for import check
+                top_level = package.split(".")[0]
+                try:
+                    importlib.import_module(top_level)
+                except ImportError:
+                    missing.append(package)
+            if missing:
+                raise ImportError(
+                    f"Missing required dependencies: {', '.join(missing)}. "
+                    f"Install with: pip install {' '.join(missing)}"
+                )
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator

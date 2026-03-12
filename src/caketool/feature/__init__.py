@@ -1,3 +1,3 @@
-from .feature_encoder import FeatureEncoder
-from .feature_remover import FeatureRemover, UnivariateFeatureRemover, ColinearFeatureRemover
-from .infinity_handler import InfinityHandler
+from .feature_generator import (
+    generate_features_by_window as generate_features_by_window,
+)

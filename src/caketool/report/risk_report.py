@@ -1,16 +1,15 @@
-from typing import List
 
 import pandas as pd
 
 
 def decribe_risk_score(
-    score_df: pd.DataFrame, 
-    pred_col: str = "score", 
+    score_df: pd.DataFrame,
+    pred_col: str = "score",
     label_col: str = "label",
-    segments: List[float] = [
+    segments: tuple[float, ...] = (
         0, .01, .02, .03, .04, .05, .06, .07, .08, .09,
         .1, .125, .15, .2, .3, .4, .5, .6, .8, .9, 1
-    ]
+    )
 ) -> pd.DataFrame:
     prop_df = score_df[[pred_col, label_col]].copy()
     prop_df.columns = ["probability", "default_next_month"]
@@ -33,7 +32,7 @@ def decribe_risk_score(
     summary["band"] = [f"B{i}" for i in range(len(summary), 0, -1)]
 
     return summary[[
-        'band', 'proba_segment', 
+        'band', 'proba_segment',
         'def_rate%', 'approval_rate%',
         '%bad_cumsum', '%good_cumsum',
         '%bad', '%good',
