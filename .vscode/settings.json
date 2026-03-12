@@ -3,6 +3,7 @@
         "**/.ruff_cache": true,
         "**/dist": true,
         "**/*.egg-info": true,
+        "**/_version.py": true,
     },
     "autopep8.args": [
         "--max-line-length", "300"
