@@ -1,11 +1,12 @@
-
 import numpy as np
 import pandas as pd
 from scipy.special import expit
 from scipy.stats import norm
 
 
-def calibrate_score_to_normal(scores: list | tuple | np.ndarray | pd.Series | float, standard=False) -> np.ndarray | float:
+def calibrate_score_to_normal(
+    scores: list | tuple | np.ndarray | pd.Series | float, standard=False
+) -> np.ndarray | float:
     """
     Calibrates scores via normal distribution transformation while keeping output in (0, 1).
 
@@ -21,6 +22,7 @@ def calibrate_score_to_normal(scores: list | tuple | np.ndarray | pd.Series | fl
     - Only suitable for UNIMODAL distributions.
     - For bimodal/multimodal, use supervised calibration (Isotonic, Platt Scaling, etc.)
     - Pulls extreme values (near 0 or 1) toward 0.5 to reduce overconfidence.
+    - Preserves order: if score_a > score_b then calibrated_a > calibrated_b (monotonic).
 
     Parameters:
     ----------
