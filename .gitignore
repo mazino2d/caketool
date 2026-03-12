@@ -103,6 +103,9 @@ venv.bak/
 # mypy
 .mypy_cache/
 
+# setuptools-scm generated version file
+_version.py
+
 notebook.ipynb
 
 **/catboost_info
