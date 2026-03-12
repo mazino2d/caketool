@@ -39,8 +39,8 @@ class ExperimentTracker(ABC):
         pass
 
     @abstractmethod
-    def log_metrics(self, metrics: dict[str, float | int | str]) -> None:
-        """Log metrics to the experiment run."""
+    def log_metrics(self, metrics: dict[str, float | int | str], step: int | None = None) -> None:
+        """Log metrics to the experiment run, optionally at a specific step."""
         pass
 
     @abstractmethod
@@ -144,7 +144,7 @@ class VertexAITracker(ExperimentTracker):
         if self.mode == "develop":
             self.experiment_run.log_params(params)
 
-    def log_metrics(self, metrics: dict[str, float | int | str]) -> None:
+    def log_metrics(self, metrics: dict[str, float | int | str], step: int | None = None) -> None:
         """
         Log metrics to the experiment run.
 
@@ -152,9 +152,15 @@ class VertexAITracker(ExperimentTracker):
         ----------
         metrics : dict[str, float | int | str]
             A dictionary of metrics to log.
+        step : int, optional
+            The step/iteration number for time-series metrics.
+            If provided, uses log_time_series_metrics for tracking over time.
         """
         if self.mode == "develop":
-            self.experiment_run.log_metrics(metrics)
+            if step is not None:
+                self.experiment_run.log_time_series_metrics(metrics, step=step)
+            else:
+                self.experiment_run.log_metrics(metrics)
 
     def log_file(self, filename: str, artifact_id: str) -> None:
         """
@@ -167,8 +173,9 @@ class VertexAITracker(ExperimentTracker):
         artifact_id : str
             The unique identifier for the artifact.
         """
-        blob = self._add_artifact(artifact_id)
-        blob.upload_from_filename(filename)
+        if self.mode == "develop":
+            blob = self._add_artifact(artifact_id)
+            blob.upload_from_filename(filename)
 
     def log_pickle(self, var: object, artifact_id: str) -> None:
         """
@@ -181,9 +188,10 @@ class VertexAITracker(ExperimentTracker):
         artifact_id : str
             The unique identifier for the artifact.
         """
-        pickle_out = pickle.dumps(var)
-        blob = self._add_artifact(artifact_id)
-        blob.upload_from_string(pickle_out)
+        if self.mode == "develop":
+            pickle_out = pickle.dumps(var)
+            blob = self._add_artifact(artifact_id)
+            blob.upload_from_string(pickle_out)
 
     def load_pickle(self, artifact_id: str) -> object:
         """
@@ -297,7 +305,7 @@ class MLflowTracker(ExperimentTracker):
         if self.mode == "develop" and self._run:
             self._mlflow.log_params(params)
 
-    def log_metrics(self, metrics: dict[str, float | int | str]) -> None:
+    def log_metrics(self, metrics: dict[str, float | int | str], step: int | None = None) -> None:
         """
         Log metrics to the experiment run.
 
@@ -305,9 +313,11 @@ class MLflowTracker(ExperimentTracker):
         ----------
         metrics : dict[str, float | int | str]
             A dictionary of metrics to log.
+        step : int, optional
+            The step/iteration number for time-series metrics (e.g., epoch).
         """
         if self.mode == "develop" and self._run:
-            self._mlflow.log_metrics(metrics)
+            self._mlflow.log_metrics(metrics, step=step)
 
     def log_file(self, filename: str, artifact_id: str) -> None:
         """
