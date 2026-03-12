@@ -72,6 +72,10 @@ target/
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# MLflow
+mlruns/
+mlartifacts/
+
 # pyenv
 .python-version
 
