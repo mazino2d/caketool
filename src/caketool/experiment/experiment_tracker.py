@@ -1,5 +1,5 @@
 import pickle
-from typing import *
+from typing import Dict, Union, Literal
 from google.cloud import aiplatform, storage
 
 
