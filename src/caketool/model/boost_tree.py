@@ -1,4 +1,3 @@
-
 import numpy as np
 import pandas as pd
 import xgboost as xgb
@@ -9,45 +8,42 @@ from sklearn.model_selection import RepeatedStratifiedKFold
 from sklearn.pipeline import Pipeline
 from tqdm import tqdm
 
-from caketool.feature.feature_encoder import FeatureEncoder
-from caketool.feature.feature_remover import ColinearFeatureRemover, UnivariateFeatureRemover
-from caketool.feature.infinity_handler import InfinityHandler
+from .feature_encoder import FeatureEncoder
+from .feature_remover import ColinearFeatureRemover, UnivariateFeatureRemover
+from .infinity_handler import InfinityHandler
 
 set_config(transform_output="pandas")
 
 
 DEFAULT_PARAM = {
-    'feature_encoder': {
+    "feature_encoder": {
         "encoder_name": "category_encoders.TargetEncoder",
     },
-    'colinear_feature_remover': {
-        "correlation_threshold": 0.9
-    },
-    'univariate_feature_remover': {
+    "colinear_feature_remover": {"correlation_threshold": 0.9},
+    "univariate_feature_remover": {
         "score_func": f_classif,
         "threshold": 0.05,
     },
-    'model_params': {
-        'random_state': 8799,
-        'booster': 'gbtree',
-        'tree_method': 'approx',
-        'objective': 'binary:logistic',
-        'eval_metric': 'auc',
-        'grow_policy': 'lossguide',
-        'max_depth': 7,
-        'eta': 0.05,
-        'gamma': 0.5,
-        'subsample': 0.65,
-        'min_child_weight': 16,
-        'colsample_bytree': 0.5,
-        'scale_pos_weight': 1,
-        'nthread': 4,
-    }
+    "model_params": {
+        "random_state": 8799,
+        "booster": "gbtree",
+        "tree_method": "approx",
+        "objective": "binary:logistic",
+        "eval_metric": "auc",
+        "grow_policy": "lossguide",
+        "max_depth": 7,
+        "eta": 0.05,
+        "gamma": 0.5,
+        "subsample": 0.65,
+        "min_child_weight": 16,
+        "colsample_bytree": 0.5,
+        "scale_pos_weight": 1,
+        "nthread": 4,
+    },
 }
 
 
 class BoostTree(BaseEstimator, RegressorMixin):
-
     def __init__(self, param: dict = DEFAULT_PARAM):
         super().__init__()
         self.param = param
@@ -56,23 +52,28 @@ class BoostTree(BaseEstimator, RegressorMixin):
         univariate_feature_remover = UnivariateFeatureRemover(**param["univariate_feature_remover"])
         colinear_feature_remover = ColinearFeatureRemover(**param["colinear_feature_remover"])
         self.model = xgb.XGBClassifier(**param["model_params"])
-        self.preprocess = Pipeline([
-            ('feature_encoder', feature_encoder),
-            ('infinity_handler', infinity_handler),
-            ('univariate_feature_remover', univariate_feature_remover),
-            ('colinear_feature_remover', colinear_feature_remover)
-        ])
-        self.pipeline = Pipeline([
-            ('preprocess', self.preprocess),
-            ('model', self.model),
-        ])
+        self.preprocess = Pipeline(
+            [
+                ("feature_encoder", feature_encoder),
+                ("infinity_handler", infinity_handler),
+                ("univariate_feature_remover", univariate_feature_remover),
+                ("colinear_feature_remover", colinear_feature_remover),
+            ]
+        )
+        self.pipeline = Pipeline(
+            [
+                ("preprocess", self.preprocess),
+                ("model", self.model),
+            ]
+        )
 
     def fit(self, X, y, eval_set=None, verbose=False):
         self.preprocess.fit(X, y)
         if eval_set is not None and len(eval_set) > 0:
             eval_set = [(self.preprocess.transform(s[0]), s[1]) for s in eval_set]
         self.pipeline.fit(
-            X, y,
+            X,
+            y,
             model__eval_set=eval_set,
             model__verbose=verbose,
         )
@@ -120,7 +121,6 @@ class BoostTree(BaseEstimator, RegressorMixin):
 
 
 class EnsembleBoostTree(BaseEstimator, RegressorMixin):
-
     def __init__(self, estimators: list[BoostTree]):
         self.estimators = estimators
 
@@ -140,12 +140,11 @@ class EnsembleBoostTree(BaseEstimator, RegressorMixin):
             if feature_importance is None:
                 feature_importance: pd.DataFrame = sub_fi
             else:
-                feature_importance = feature_importance.merge(
-                    sub_fi,
-                    how="outer", on="feature_name"
-                ).fillna(0)
+                feature_importance = feature_importance.merge(sub_fi, how="outer", on="feature_name").fillna(0)
                 for score_type in sub_fi.columns[1:]:
-                    feature_importance[score_type] = feature_importance[score_type + "_x"] + feature_importance[score_type + "_y"]
+                    feature_importance[score_type] = (
+                        feature_importance[score_type + "_x"] + feature_importance[score_type + "_y"]
+                    )
                 feature_importance = feature_importance[sub_fi.columns]
         return feature_importance
 
