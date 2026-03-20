@@ -3,7 +3,9 @@ from typing import Literal
 import numpy as np
 
 
-def psi(expected: np.ndarray, actual: np.ndarray, bucket_type: Literal["bins", "quantiles"] = "quantiles", n_bins: int = 10) -> float:
+def psi(
+    expected: np.ndarray, actual: np.ndarray, bucket_type: Literal["bins", "quantiles"] = "quantiles", n_bins: int = 10
+) -> float:
     """
     Calculate the Population Stability Index (PSI) for two arrays.
 

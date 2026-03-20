@@ -1,5 +1,3 @@
-
-
 def round(val: int | float, type: type = None):
     if type is int or isinstance(val, int):
         num_digits = len(str(int(val)))

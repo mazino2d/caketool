@@ -9,26 +9,21 @@ from caketool.utils import arr_utils, num_utils, str_utils
 
 
 class ModelMonitor:
-
     def __init__(self, project, location, dataset="model_motinor") -> None:
         self.project = project
         self.location = location
         self.dataset = dataset
-        self.MISSING = 'cake.miss'
-        self.OTHER = 'cake.other'
+        self.MISSING = "cake.miss"
+        self.OTHER = "cake.other"
         self.bq_client = bigquery.Client(project=self.project, location=self.location)
         self.ID_COLS = ["score_type", "dataset_type", "version_type", "version"]
-        self.ID_SCHEMA = [
-            bigquery.SchemaField(name, 'STRING', 'REQUIRED')
-            for name in self.ID_COLS
-        ]
+        self.ID_SCHEMA = [bigquery.SchemaField(name, "STRING", "REQUIRED") for name in self.ID_COLS]
 
     def normalize_data(
-        self, df: pd.DataFrame, inplace: bool = False,
-        cate_missing_values: set[str] | None = None
+        self, df: pd.DataFrame, inplace: bool = False, cate_missing_values: set[str] | None = None
     ) -> pd.DataFrame:
         if cate_missing_values is None:
-            cate_missing_values = {'-1', '-100', 'unknown', ''}
+            cate_missing_values = {"-1", "-100", "unknown", ""}
         if not inplace:
             df = df.copy()
         # Fill missing value
@@ -62,18 +57,14 @@ class ModelMonitor:
         # Handle categorical columns
         for col in categorical_features:
             df[col] = df[col].apply(
-                lambda x: self.MISSING
-                if x in cate_missing_values
-                else str_utils.remove_vn_diacritics(x).lower().strip()
+                lambda x: (
+                    self.MISSING if x in cate_missing_values else str_utils.remove_vn_diacritics(x).lower().strip()
+                )
             )
         df.__is_norm = True
         return df
 
-    def create_bin_data(
-        self,
-        df: pd.DataFrame,
-        n_bins=10
-    ) -> dict[str, list[float | str]]:
+    def create_bin_data(self, df: pd.DataFrame, n_bins=10) -> dict[str, list[float | str]]:
         if not self._check_norm(df):
             raise Exception("DataFrame has not been normalized yet. Please use self.normalize_data(df)")
         numerical_features = set(df.select_dtypes([int, float]).columns)
@@ -110,16 +101,21 @@ class ModelMonitor:
         version_type: str,
         version: str,
         df_bins: pd.DataFrame,
-        bq_table_name="feature_bins"
+        bq_table_name="feature_bins",
     ):
         df_bins["bins"] = df_bins["bins"].apply(lambda ls: list(map(str, ls)))
         self._store_df(
-            score_type, dataset_type, version_type, version, df_bins, bq_table_name,
+            score_type,
+            dataset_type,
+            version_type,
+            version,
+            df_bins,
+            bq_table_name,
             [
-                bigquery.SchemaField("feature_name", 'STRING', 'REQUIRED'),
-                bigquery.SchemaField("type", 'STRING', 'REQUIRED'),
-                bigquery.SchemaField("bins", 'STRING', 'REPEATED'),
-            ]
+                bigquery.SchemaField("feature_name", "STRING", "REQUIRED"),
+                bigquery.SchemaField("type", "STRING", "REQUIRED"),
+                bigquery.SchemaField("bins", "STRING", "REPEATED"),
+            ],
         )
 
     def load_bin_data(
@@ -143,14 +139,11 @@ class ModelMonitor:
                 return r["bins"]
             else:
                 return [float(e) for e in r["bins"]]
+
         df_bins["bins"] = df_bins.apply(cvt_bins, axis=1)
         return df_bins.sort_values("feature_name").reset_index(drop=True)
 
-    def calc_feature_distribution(
-        self,
-        df: pd.DataFrame,
-        df_bins: dict[str, np.ndarray]
-    ) -> pd.DataFrame:
+    def calc_feature_distribution(self, df: pd.DataFrame, df_bins: dict[str, np.ndarray]) -> pd.DataFrame:
         if not self._check_norm(df):
             raise Exception("DataFrame has not been normalized yet. Please use self.normalize_data(df)")
         bin_thresholds: dict[str, np.ndarray] = dict(zip(df_bins.feature_name, df_bins.bins, strict=True))
@@ -176,7 +169,9 @@ class ModelMonitor:
             segments = [". ".join(e) for e in zip(str_utils.UPPER_ALPHABET, bins, strict=False)]
             hists.append([f, segments, vc, vc.sum(), vc / vc.sum()])
 
-        return pd.DataFrame(hists, columns=["feature_name", "segment", "count", "total", "percent"]).explode(["segment", "count", "percent"])
+        return pd.DataFrame(hists, columns=["feature_name", "segment", "count", "total", "percent"]).explode(
+            ["segment", "count", "percent"]
+        )
 
     def store_feature_distribution(
         self,
@@ -185,24 +180,25 @@ class ModelMonitor:
         version_type: str,
         version: str,
         df_distribution,
-        bq_table_name="feature_distribution"
+        bq_table_name="feature_distribution",
     ) -> None:
         self._store_df(
-            score_type, dataset_type, version_type, version, df_distribution, bq_table_name,
+            score_type,
+            dataset_type,
+            version_type,
+            version,
+            df_distribution,
+            bq_table_name,
             [
-                bigquery.SchemaField("feature_name", 'STRING', 'REQUIRED'),
-                bigquery.SchemaField("segment", 'STRING', 'REQUIRED'),
-                bigquery.SchemaField("count", 'INTEGER', 'REQUIRED'),
-                bigquery.SchemaField("total", 'INTEGER', 'REQUIRED'),
-                bigquery.SchemaField("percent", 'FLOAT', 'REQUIRED'),
-            ]
+                bigquery.SchemaField("feature_name", "STRING", "REQUIRED"),
+                bigquery.SchemaField("segment", "STRING", "REQUIRED"),
+                bigquery.SchemaField("count", "INTEGER", "REQUIRED"),
+                bigquery.SchemaField("total", "INTEGER", "REQUIRED"),
+                bigquery.SchemaField("percent", "FLOAT", "REQUIRED"),
+            ],
         )
 
-    def calc_score_distribution(
-        self,
-        score: np.ndarray,
-        bins: int | list[float] = 10
-    ):
+    def calc_score_distribution(self, score: np.ndarray, bins: int | list[float] = 10):
         if isinstance(bins, int):
             bins = arr_utils.create_percentile_bins(score, bins)
         total = len(score)
@@ -210,12 +206,14 @@ class ModelMonitor:
         percent = histogram / total
         segments = self._cvt_bins2labels(bins)
         segments = [". ".join(e) for e in zip(str_utils.UPPER_ALPHABET, segments, strict=False)]
-        return pd.DataFrame({
-            "segment": segments,
-            "count": histogram,
-            "total": [total] * len(histogram),
-            "percent": percent,
-        })
+        return pd.DataFrame(
+            {
+                "segment": segments,
+                "count": histogram,
+                "total": [total] * len(histogram),
+                "percent": percent,
+            }
+        )
 
     def store_score_distribution(
         self,
@@ -224,16 +222,21 @@ class ModelMonitor:
         version_type: str,
         version: str,
         df_distribution: pd.DataFrame,
-        bq_table_name="score_distribution"
+        bq_table_name="score_distribution",
     ) -> None:
         self._store_df(
-            score_type, dataset_type, version_type, version, df_distribution, bq_table_name,
+            score_type,
+            dataset_type,
+            version_type,
+            version,
+            df_distribution,
+            bq_table_name,
             [
-                bigquery.SchemaField("segment", 'STRING', 'REQUIRED'),
-                bigquery.SchemaField("count", 'INTEGER', 'REQUIRED'),
-                bigquery.SchemaField("total", 'INTEGER', 'REQUIRED'),
-                bigquery.SchemaField("percent", 'FLOAT', 'REQUIRED'),
-            ]
+                bigquery.SchemaField("segment", "STRING", "REQUIRED"),
+                bigquery.SchemaField("count", "INTEGER", "REQUIRED"),
+                bigquery.SchemaField("total", "INTEGER", "REQUIRED"),
+                bigquery.SchemaField("percent", "FLOAT", "REQUIRED"),
+            ],
         )
 
     def _check_norm(self, df: pd.DataFrame):
@@ -270,14 +273,10 @@ class ModelMonitor:
         version: str,
         df: pd.DataFrame,
         bq_table_name: str,
-        schema: list[bigquery.SchemaField]
+        schema: list[bigquery.SchemaField],
     ):
         job_config = bigquery.LoadJobConfig(
-            schema=[
-                *self.ID_SCHEMA,
-                *schema,
-                bigquery.SchemaField("utc_update_at", "DATETIME", "REQUIRED")
-            ],
+            schema=[*self.ID_SCHEMA, *schema, bigquery.SchemaField("utc_update_at", "DATETIME", "REQUIRED")],
             clustering_fields=self.ID_COLS,
         )
         df = df.copy()

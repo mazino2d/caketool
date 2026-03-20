@@ -1,15 +1,12 @@
 from google.cloud import bigquery
 
-ONE_GIGABYTE = (1024 ** 3)
-ONE_TERABYTE = (1024 * ONE_GIGABYTE)
+ONE_GIGABYTE = 1024**3
+ONE_TERABYTE = 1024 * ONE_GIGABYTE
 DEFAULT_BQ_CLI = bigquery.Client()
 
 
 def safety_query(
-    query_statement: str,
-    client: bigquery.Client = DEFAULT_BQ_CLI,
-    gb_limit=50,
-    price_for_one_terabyte=8.44
+    query_statement: str, client: bigquery.Client = DEFAULT_BQ_CLI, gb_limit=50, price_for_one_terabyte=8.44
 ) -> bigquery.QueryJob:
     """
     Query data from Big Query. Check the cost (Gb and $) before executing the query.
