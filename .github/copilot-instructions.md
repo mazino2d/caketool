@@ -81,3 +81,8 @@ from .feature_remover import ColinearFeatureRemover as ColinearFeatureRemover
 ## Testing Patterns
 
 - Tests in `tests/` using pytest
+- Import source modules using `src.` prefix:
+  ```python
+  from src.caketool.some.module import SomeClass
+  ```
+- Use class-based test grouping (`class TestFoo`) with pytest fixtures
