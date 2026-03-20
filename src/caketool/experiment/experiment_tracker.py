@@ -10,17 +10,27 @@ class ExperimentTracker(ABC):
     Abstract base class for experiment tracking.
 
     Provides a unified interface for logging parameters, metrics, and artifacts
-    to different experiment tracking backends (Vertex AI, MLflow, etc.).
+    to different experiment tracking backends (Vertex AI, MLflow, wandb).
+
+    Use this class as a context manager (``with`` statement) to automatically
+    open and close a run. Set ``mode="deploy"`` to disable all logging in
+    production without changing any other code.
+
+    API keys and credentials should be set via environment variables, either
+    directly in the shell or through a ``.env`` file passed via ``dotenv_path``.
 
     Parameters
     ----------
     experiment_name : str
-        The name of the experiment.
+        Name of the experiment. Groups multiple runs together.
     run_name : str
-        The name of the experiment run.
-    mode : Literal['develop', 'deploy'], optional (default="develop")
-        The mode of the experiment tracker. "develop" enables logging,
-        "deploy" disables logging for production use.
+        Name of this specific run within the experiment.
+    mode : {"develop", "deploy"}, optional
+        ``"develop"`` enables logging (default). ``"deploy"`` silently skips
+        all logging — useful for production inference.
+    dotenv_path : str or None, optional
+        Path to a ``.env`` file to load before initializing the tracker.
+        Useful for storing API keys and credentials outside the codebase.
     """
 
     def __init__(
@@ -28,91 +38,189 @@ class ExperimentTracker(ABC):
         experiment_name: str,
         run_name: str,
         mode: Literal["develop", "deploy"] = "develop",
+        dotenv_path: str | None = None,
     ) -> None:
+        if dotenv_path is not None:
+            from dotenv import load_dotenv
+
+            load_dotenv(dotenv_path)
         self.experiment_name = experiment_name
         self.run_name = run_name
         self.mode = mode
 
     @abstractmethod
     def log_params(self, params: dict[str, float | int | str]) -> None:
-        """Log parameters to the experiment run."""
+        """
+        Log hyperparameters for this run.
+
+        Call this once at the start of a run to record the configuration
+        (e.g., learning rate, batch size, regularization strength).
+
+        Parameters
+        ----------
+        params : dict[str, float | int | str]
+            Hyperparameter names and their values.
+        """
         pass
 
     @abstractmethod
     def log_metrics(self, metrics: dict[str, float | int | str], step: int | None = None) -> None:
-        """Log metrics to the experiment run, optionally at a specific step."""
+        """
+        Log evaluation metrics for this run.
+
+        Parameters
+        ----------
+        metrics : dict[str, float | int | str]
+            Metric names and their values (e.g., ``{"accuracy": 0.95, "loss": 0.1}``).
+        step : int or None, optional
+            Training step or epoch number. Pass this to track how metrics
+            change over time and plot learning curves.
+        """
         pass
 
     @abstractmethod
     def log_file(self, filename: str, artifact_id: str) -> None:
-        """Log a file as an artifact."""
+        """
+        Upload a local file to the backend's artifact store.
+
+        Parameters
+        ----------
+        filename : str
+            Local path to the file to upload (e.g., a saved model or config).
+        artifact_id : str
+            Identifier for the artifact on the backend.
+        """
         pass
 
     @abstractmethod
     def log_pickle(self, var: object, artifact_id: str) -> None:
-        """Log a pickled object as an artifact."""
+        """
+        Pickle a Python object and upload it as an artifact.
+
+        Parameters
+        ----------
+        var : object
+            Any picklable object (e.g., a fitted scikit-learn pipeline).
+        artifact_id : str
+            Identifier for the artifact on the backend.
+        """
         pass
 
     @abstractmethod
     def load_pickle(self, artifact_id: str) -> object:
-        """Load a pickled object from artifacts."""
+        """
+        Download and unpickle an artifact that was previously saved with
+        ``log_pickle``.
+
+        Parameters
+        ----------
+        artifact_id : str
+            Identifier of the artifact to load.
+
+        Returns
+        -------
+        object
+            The unpickled Python object.
+        """
         pass
 
     @abstractmethod
     def __enter__(self):
-        """Enter the runtime context."""
+        """Open the run. Called automatically by the ``with`` statement."""
         pass
 
     @abstractmethod
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        """Exit the runtime context."""
+        """Close the run. Called automatically when exiting the ``with`` block."""
         pass
 
 
 class VertexAITracker(ExperimentTracker):
     """
-    Experiment tracker using Google Cloud Vertex AI.
+    Experiment tracker backed by Google Cloud Vertex AI.
+
+    Authenticates via Application Default Credentials (ADC). Either run
+    ``gcloud auth application-default login``, or set
+    ``GOOGLE_APPLICATION_CREDENTIALS`` to the path of a service account key
+    file in your ``.env``.
+
+    Example ``.env`` file::
+
+        GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
+        GOOGLE_CLOUD_PROJECT=my-gcp-project
+        GOOGLE_CLOUD_LOCATION=us-central1
+        VERTEX_STAGING_BUCKET=gs://my-bucket
 
     Parameters
     ----------
-    project : str
-        The GCP project ID.
-    location : str
-        The location for the AI Platform services.
     experiment_name : str
-        The name of the experiment.
+        Name of the Vertex AI experiment.
     run_name : str
-        The name of the experiment run.
-    bucket_name : str
-        The name of the GCS bucket to store artifacts.
-    mode : Literal['develop', 'deploy'], optional (default="develop")
-        The mode of the experiment tracker. Can be "develop" or "deploy".
-    experiment_description : str, optional (default=None)
-        A description of the experiment.
-    experiment_tensorboard : bool, optional (default=False)
-        Whether to use TensorBoard for experiment tracking.
+        Name of this run within the experiment.
+    project : str or None, optional
+        GCP project ID. Falls back to ``GOOGLE_CLOUD_PROJECT`` env var.
+    location : str or None, optional
+        GCP region (e.g. ``"us-central1"``). Falls back to
+        ``GOOGLE_CLOUD_LOCATION`` env var.
+    bucket_name : str or None, optional
+        GCS bucket URI for artifact storage (e.g. ``"gs://my-bucket"``).
+        Falls back to ``VERTEX_STAGING_BUCKET`` env var.
+    mode : {"develop", "deploy"}, optional
+        ``"develop"`` enables logging (default). ``"deploy"`` disables it.
+    experiment_description : str or None, optional
+        Short description of what this experiment is testing.
+    experiment_tensorboard : bool, optional
+        Whether to enable TensorBoard integration (default: ``False``).
+    dotenv_path : str or None, optional
+        Path to a ``.env`` file. Cannot be combined with ``project``,
+        ``location``, or ``bucket_name`` if their corresponding env vars are
+        also present in the file (raises ``ValueError``).
     """
 
     @require_dependencies("google.cloud.aiplatform", "google.cloud.storage")
     def __init__(
         self,
-        project: str,
-        location: str,
         experiment_name: str,
         run_name: str,
-        bucket_name: str,
+        project: str | None = None,
+        location: str | None = None,
+        bucket_name: str | None = None,
         mode: Literal["develop", "deploy"] = "develop",
-        experiment_description: str = None,
+        experiment_description: str | None = None,
         experiment_tensorboard: bool = False,
+        dotenv_path: str | None = None,
     ) -> None:
+        import os
+
         from google.cloud import aiplatform, storage
 
-        super().__init__(experiment_name, run_name, mode)
-        self.project = project
-        self.location = location
+        _env_map = {
+            "project": "GOOGLE_CLOUD_PROJECT",
+            "location": "GOOGLE_CLOUD_LOCATION",
+            "bucket_name": "VERTEX_STAGING_BUCKET",
+        }
+        if dotenv_path is not None:
+            from dotenv import dotenv_values
+
+            env_vals = dotenv_values(dotenv_path)
+            conflicts = [p for p, e in _env_map.items() if locals()[p] is not None and e in env_vals]
+            if conflicts:
+                raise ValueError(f"Cannot pass both dotenv_path and direct params: {conflicts}")
+
+        super().__init__(experiment_name, run_name, mode, dotenv_path=dotenv_path)
+
+        self.project = project or os.environ.get("GOOGLE_CLOUD_PROJECT")
+        self.location = location or os.environ.get("GOOGLE_CLOUD_LOCATION")
+        self.bucket_name = bucket_name or os.environ.get("VERTEX_STAGING_BUCKET")
+        if not self.project:
+            raise ValueError("project must be provided or set as GOOGLE_CLOUD_PROJECT in .env")
+        if not self.location:
+            raise ValueError("location must be provided or set as GOOGLE_CLOUD_LOCATION in .env")
+        if not self.bucket_name:
+            raise ValueError("bucket_name must be provided or set as VERTEX_STAGING_BUCKET in .env")
+
         self.experiment_description = experiment_description
         self.experiment_tensorboard = experiment_tensorboard
-        self.bucket_name = bucket_name
         self.gs_client = storage.Client(project=self.project)
         self.gc_bucket = storage.Bucket(self.gs_client, self.bucket_name)
         self._aiplatform = aiplatform
@@ -134,27 +242,29 @@ class VertexAITracker(ExperimentTracker):
 
     def log_params(self, params: dict[str, float | int | str]) -> None:
         """
-        Log parameters to the experiment run.
+        Log hyperparameters to the Vertex AI experiment run.
 
         Parameters
         ----------
         params : dict[str, float | int | str]
-            A dictionary of parameters to log.
+            Hyperparameter names and their values.
         """
         if self.mode == "develop":
             self.experiment_run.log_params(params)
 
     def log_metrics(self, metrics: dict[str, float | int | str], step: int | None = None) -> None:
         """
-        Log metrics to the experiment run.
+        Log metrics to the Vertex AI experiment run.
+
+        When ``step`` is provided, uses ``log_time_series_metrics`` to record
+        metrics at a specific training step (e.g., for plotting learning curves).
 
         Parameters
         ----------
         metrics : dict[str, float | int | str]
-            A dictionary of metrics to log.
-        step : int, optional
-            The step/iteration number for time-series metrics.
-            If provided, uses log_time_series_metrics for tracking over time.
+            Metric names and their values.
+        step : int or None, optional
+            Training step or epoch number.
         """
         if self.mode == "develop":
             if step is not None:
@@ -164,14 +274,14 @@ class VertexAITracker(ExperimentTracker):
 
     def log_file(self, filename: str, artifact_id: str) -> None:
         """
-        Log a file as an artifact to Google Cloud Storage.
+        Upload a file to GCS and register it as a Vertex AI artifact.
 
         Parameters
         ----------
         filename : str
-            The path to the file to log.
+            Local path to the file to upload.
         artifact_id : str
-            The unique identifier for the artifact.
+            Unique identifier for this artifact within the run.
         """
         if self.mode == "develop":
             blob = self._add_artifact(artifact_id)
@@ -179,14 +289,14 @@ class VertexAITracker(ExperimentTracker):
 
     def log_pickle(self, var: object, artifact_id: str) -> None:
         """
-        Log a pickled object as an artifact to Google Cloud Storage.
+        Pickle an object and upload it directly to GCS (no temp file needed).
 
         Parameters
         ----------
         var : object
-            The object to pickle and log.
+            Any picklable Python object.
         artifact_id : str
-            The unique identifier for the artifact.
+            Unique identifier for this artifact within the run.
         """
         if self.mode == "develop":
             pickle_out = pickle.dumps(var)
@@ -195,30 +305,35 @@ class VertexAITracker(ExperimentTracker):
 
     def load_pickle(self, artifact_id: str) -> object:
         """
-        Load a pickled object from Google Cloud Storage.
+        Download an artifact from GCS and unpickle it.
 
         Parameters
         ----------
         artifact_id : str
-            The unique identifier for the artifact.
+            Identifier of the artifact to load.
 
         Returns
         -------
         object
-            The unpickled object.
+            The unpickled Python object.
         """
         blob = self._get_blob(artifact_id)
         pickle_in = blob.download_as_string()
         return pickle.loads(pickle_in)
 
     def _get_blob(self, artifact_id: str):
-        """Get a GCS blob for the specified artifact."""
+        """Return the GCS blob for the given artifact (does not check existence)."""
         blob_name = f"{self.experiment_name}-{self.run_name}-{artifact_id}"
         blob = self.gc_bucket.blob(blob_name)
         return blob
 
     def _add_artifact(self, artifact_id: str):
-        """Add an artifact to the experiment run in AI Platform."""
+        """
+        Register a new artifact in Vertex AI and return its GCS blob.
+
+        Raises ``ValueError`` if the artifact already exists to prevent
+        accidental overwrites.
+        """
         blob = self._get_blob(artifact_id)
         uri = blob.path_helper(self.bucket_name, blob.name)
         if blob.exists():
@@ -230,14 +345,14 @@ class VertexAITracker(ExperimentTracker):
         return blob
 
     def __enter__(self):
-        """Enter the runtime context for the experiment tracker."""
+        """Open the Vertex AI run and execution context."""
         if self.mode == "develop":
             self.execution.__enter__()
             self.experiment_run.__enter__()
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        """Exit the runtime context for the experiment tracker."""
+        """Close the Vertex AI run and execution context."""
         if self.mode == "develop":
             self.execution.__exit__(exc_type, exc_value, exc_traceback)
             self.experiment_run.__exit__(exc_type, exc_value, exc_traceback)
@@ -245,23 +360,40 @@ class VertexAITracker(ExperimentTracker):
 
 class MLflowTracker(ExperimentTracker):
     """
-    Experiment tracker using MLflow.
+    Experiment tracker backed by MLflow.
+
+    Connects to an MLflow tracking server. For authenticated servers, embed
+    credentials in the URI (e.g. ``http://user:password@host:5000``) or set
+    ``MLFLOW_TRACKING_USERNAME`` / ``MLFLOW_TRACKING_PASSWORD`` as env vars.
+
+    The experiment is created automatically if it does not already exist.
+
+    Example ``.env`` file::
+
+        MLFLOW_TRACKING_URI=http://localhost:5000
+        MLFLOW_TRACKING_USERNAME=my-user
+        MLFLOW_TRACKING_PASSWORD=my-password
+        MLFLOW_ARTIFACT_LOCATION=s3://my-bucket/artifacts
 
     Parameters
     ----------
     experiment_name : str
-        The name of the experiment.
+        Name of the MLflow experiment. Created if it does not exist.
     run_name : str
-        The name of the experiment run.
-    tracking_uri : str, optional (default=None)
-        The URI of the MLflow tracking server.
-        If None, uses the default local tracking.
-    artifact_location : str, optional (default=None)
-        The location to store artifacts. Can be local path or cloud storage URI.
-    mode : Literal['develop', 'deploy'], optional (default="develop")
-        The mode of the experiment tracker.
-    tags : dict[str, str], optional (default=None)
-        Tags to associate with the experiment run.
+        Name of this run within the experiment.
+    tracking_uri : str or None, optional
+        URI of the MLflow tracking server. Falls back to
+        ``MLFLOW_TRACKING_URI`` env var. Uses the local filesystem if unset.
+    artifact_location : str or None, optional
+        Storage location for artifacts (only applied when creating a new
+        experiment). Falls back to ``MLFLOW_ARTIFACT_LOCATION`` env var.
+    mode : {"develop", "deploy"}, optional
+        ``"develop"`` enables logging (default). ``"deploy"`` disables it.
+    tags : dict[str, str] or None, optional
+        Key-value tags to attach to the run (e.g. ``{"team": "ml"}``).
+    dotenv_path : str or None, optional
+        Path to a ``.env`` file. Cannot be combined with ``tracking_uri`` or
+        ``artifact_location`` if their env vars are also in the file.
     """
 
     @require_dependencies("mlflow")
@@ -269,80 +401,93 @@ class MLflowTracker(ExperimentTracker):
         self,
         experiment_name: str,
         run_name: str,
-        tracking_uri: str = None,
-        artifact_location: str = None,
+        tracking_uri: str | None = None,
+        artifact_location: str | None = None,
         mode: Literal["develop", "deploy"] = "develop",
         tags: dict[str, str] = None,
+        dotenv_path: str | None = None,
     ) -> None:
+        import os
+
         import mlflow
 
-        super().__init__(experiment_name, run_name, mode)
-        self.tracking_uri = tracking_uri
-        self.artifact_location = artifact_location
+        _env_map = {"tracking_uri": "MLFLOW_TRACKING_URI", "artifact_location": "MLFLOW_ARTIFACT_LOCATION"}
+        if dotenv_path is not None:
+            from dotenv import dotenv_values
+
+            env_vals = dotenv_values(dotenv_path)
+            conflicts = [p for p, e in _env_map.items() if locals()[p] is not None and e in env_vals]
+            if conflicts:
+                raise ValueError(f"Cannot pass both dotenv_path and direct params: {conflicts}")
+
+        super().__init__(experiment_name, run_name, mode, dotenv_path=dotenv_path)
+
+        self.tracking_uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI")
+        self.artifact_location = artifact_location or os.environ.get("MLFLOW_ARTIFACT_LOCATION")
         self.tags = tags or {}
         self._mlflow = mlflow
         self._run = None
 
-        if tracking_uri:
-            mlflow.set_tracking_uri(tracking_uri)
+        if self.tracking_uri:
+            mlflow.set_tracking_uri(self.tracking_uri)
 
         # Create or get experiment
         experiment = mlflow.get_experiment_by_name(experiment_name)
         if experiment is None:
-            self.experiment_id = mlflow.create_experiment(experiment_name, artifact_location=artifact_location)
+            self.experiment_id = mlflow.create_experiment(experiment_name, artifact_location=self.artifact_location)
         else:
             self.experiment_id = experiment.experiment_id
 
     def log_params(self, params: dict[str, float | int | str]) -> None:
         """
-        Log parameters to the experiment run.
+        Log hyperparameters to the active MLflow run.
 
         Parameters
         ----------
         params : dict[str, float | int | str]
-            A dictionary of parameters to log.
+            Hyperparameter names and their values.
         """
         if self.mode == "develop" and self._run:
             self._mlflow.log_params(params)
 
     def log_metrics(self, metrics: dict[str, float | int | str], step: int | None = None) -> None:
         """
-        Log metrics to the experiment run.
+        Log metrics to the active MLflow run.
 
         Parameters
         ----------
         metrics : dict[str, float | int | str]
-            A dictionary of metrics to log.
-        step : int, optional
-            The step/iteration number for time-series metrics (e.g., epoch).
+            Metric names and their values.
+        step : int or None, optional
+            Training step or epoch number. Used for plotting metrics over time.
         """
         if self.mode == "develop" and self._run:
             self._mlflow.log_metrics(metrics, step=step)
 
     def log_file(self, filename: str, artifact_id: str) -> None:
         """
-        Log a file as an artifact to MLflow.
+        Upload a file to the MLflow artifact store.
 
         Parameters
         ----------
         filename : str
-            The path to the file to log.
+            Local path to the file to upload.
         artifact_id : str
-            The artifact path/subdirectory in MLflow.
+            Subdirectory path within the run's artifact store.
         """
         if self.mode == "develop" and self._run:
             self._mlflow.log_artifact(filename, artifact_path=artifact_id)
 
     def log_pickle(self, var: object, artifact_id: str) -> None:
         """
-        Log a pickled object as an artifact to MLflow.
+        Pickle an object to a temp file and upload it to the MLflow artifact store.
 
         Parameters
         ----------
         var : object
-            The object to pickle and log.
+            Any picklable Python object.
         artifact_id : str
-            The unique identifier for the artifact.
+            Name used for the ``.pkl`` file in the artifact store.
         """
         if self.mode == "develop" and self._run:
             import os
@@ -356,17 +501,22 @@ class MLflowTracker(ExperimentTracker):
 
     def load_pickle(self, artifact_id: str) -> object:
         """
-        Load a pickled object from MLflow artifacts.
+        Download and unpickle an artifact from the MLflow artifact store.
 
         Parameters
         ----------
         artifact_id : str
-            The unique identifier for the artifact.
+            Name of the artifact to load (without ``.pkl`` extension).
 
         Returns
         -------
         object
-            The unpickled object.
+            The unpickled Python object.
+
+        Raises
+        ------
+        RuntimeError
+            If called outside a ``with`` block (no active run).
         """
         if self._run is None:
             raise RuntimeError("No active run. Use within context manager or start a run first.")
@@ -377,7 +527,7 @@ class MLflowTracker(ExperimentTracker):
             return pickle.load(f)
 
     def __enter__(self):
-        """Enter the runtime context for the experiment tracker."""
+        """Start a new MLflow run."""
         if self.mode == "develop":
             self._run = self._mlflow.start_run(
                 experiment_id=self.experiment_id,
@@ -387,7 +537,7 @@ class MLflowTracker(ExperimentTracker):
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        """Exit the runtime context for the experiment tracker."""
+        """End the active MLflow run."""
         if self.mode == "develop" and self._run:
             self._mlflow.end_run()
             self._run = None
@@ -395,23 +545,34 @@ class MLflowTracker(ExperimentTracker):
 
 class WandbTracker(ExperimentTracker):
     """
-    Experiment tracker using Weights & Biases (wandb).
+    Experiment tracker backed by Weights & Biases (wandb).
+
+    Get your API key at https://wandb.ai/authorize and set it in a ``.env``
+    file before initializing this tracker.
+
+    Example ``.env`` file::
+
+        WANDB_API_KEY=your_api_key_here
+        WANDB_ENTITY=my-team
 
     Parameters
     ----------
     experiment_name : str
-        The name of the experiment (maps to wandb project).
+        Name of the wandb project. Runs are grouped under this project.
     run_name : str
-        The name of the experiment run.
-    mode : Literal['develop', 'deploy'], optional (default="develop")
-        The mode of the experiment tracker. "develop" enables logging,
-        "deploy" disables logging.
-    entity : str, optional (default=None)
-        The wandb entity (username or team name).
-    tags : list[str], optional (default=None)
-        Tags to associate with the run.
-    config : dict, optional (default=None)
-        Initial config/hyperparameters to log.
+        Display name for this run in the wandb UI.
+    mode : {"develop", "deploy"}, optional
+        ``"develop"`` enables logging (default). ``"deploy"`` disables it.
+    entity : str or None, optional
+        Your wandb username or team name. Falls back to ``WANDB_ENTITY`` env var.
+    tags : list[str] or None, optional
+        Tags for filtering and searching runs (e.g. ``["baseline", "v2"]``).
+    config : dict or None, optional
+        Initial hyperparameters to record in the run config. Can also be
+        updated later with ``log_params``.
+    dotenv_path : str or None, optional
+        Path to a ``.env`` file. Cannot be combined with ``entity`` if
+        ``WANDB_ENTITY`` is also present in the file.
     """
 
     @require_dependencies("wandb")
@@ -420,14 +581,23 @@ class WandbTracker(ExperimentTracker):
         experiment_name: str,
         run_name: str,
         mode: Literal["develop", "deploy"] = "develop",
-        entity: str = None,
+        entity: str | None = None,
         tags: list[str] = None,
         config: dict = None,
+        dotenv_path: str | None = None,
     ) -> None:
+        import os
+
         import wandb
 
-        super().__init__(experiment_name, run_name, mode)
-        self.entity = entity
+        if dotenv_path is not None and entity is not None:
+            from dotenv import dotenv_values
+
+            if "WANDB_ENTITY" in dotenv_values(dotenv_path):
+                raise ValueError("Cannot pass both dotenv_path and entity: use one or the other")
+
+        super().__init__(experiment_name, run_name, mode, dotenv_path=dotenv_path)
+        self.entity = entity or os.environ.get("WANDB_ENTITY")
         self.tags = tags
         self.config = config or {}
         self._wandb = wandb
@@ -435,40 +605,40 @@ class WandbTracker(ExperimentTracker):
 
     def log_params(self, params: dict[str, float | int | str]) -> None:
         """
-        Log parameters to the wandb run config.
+        Update the wandb run config with hyperparameters.
 
         Parameters
         ----------
         params : dict[str, float | int | str]
-            A dictionary of parameters to log.
+            Hyperparameter names and their values.
         """
         if self.mode == "develop" and self._run:
             self._run.config.update(params)
 
     def log_metrics(self, metrics: dict[str, float | int | str], step: int | None = None) -> None:
         """
-        Log metrics to the wandb run.
+        Log metrics to the active wandb run.
 
         Parameters
         ----------
         metrics : dict[str, float | int | str]
-            A dictionary of metrics to log.
-        step : int, optional
-            The step/iteration number.
+            Metric names and their values.
+        step : int or None, optional
+            Training step number. Used for the x-axis in wandb charts.
         """
         if self.mode == "develop" and self._run:
             self._run.log(metrics, step=step)
 
     def log_file(self, filename: str, artifact_id: str) -> None:
         """
-        Log a file as a wandb artifact.
+        Upload a file to wandb as an artifact.
 
         Parameters
         ----------
         filename : str
-            The path to the file to log.
+            Local path to the file to upload.
         artifact_id : str
-            The name for the artifact.
+            Name for the artifact in wandb.
         """
         if self.mode == "develop" and self._run:
             artifact = self._wandb.Artifact(artifact_id, type="file")
@@ -477,14 +647,14 @@ class WandbTracker(ExperimentTracker):
 
     def log_pickle(self, var: object, artifact_id: str) -> None:
         """
-        Log a pickled object as a wandb artifact.
+        Pickle an object to a temp file and upload it to wandb as an artifact.
 
         Parameters
         ----------
         var : object
-            The object to pickle and log.
+            Any picklable Python object.
         artifact_id : str
-            The name for the artifact.
+            Name for the artifact in wandb.
         """
         if self.mode == "develop" and self._run:
             import os
@@ -500,17 +670,22 @@ class WandbTracker(ExperimentTracker):
 
     def load_pickle(self, artifact_id: str) -> object:
         """
-        Load a pickled object from a wandb artifact.
+        Download the latest version of an artifact from wandb and unpickle it.
 
         Parameters
         ----------
         artifact_id : str
-            The name of the artifact to load.
+            Name of the artifact to load.
 
         Returns
         -------
         object
-            The unpickled object.
+            The unpickled Python object.
+
+        Raises
+        ------
+        RuntimeError
+            If called outside a ``with`` block (no active run).
         """
         if self._run is None:
             raise RuntimeError("No active run. Use within context manager or start a run first.")
@@ -522,7 +697,7 @@ class WandbTracker(ExperimentTracker):
             return pickle.load(f)
 
     def __enter__(self):
-        """Enter the runtime context for the experiment tracker."""
+        """Initialize a new wandb run."""
         if self.mode == "develop":
             self._run = self._wandb.init(
                 project=self.experiment_name,
@@ -534,7 +709,7 @@ class WandbTracker(ExperimentTracker):
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        """Exit the runtime context for the experiment tracker."""
+        """Finish the wandb run and sync all data."""
         if self.mode == "develop" and self._run:
             self._run.finish()
             self._run = None
@@ -545,72 +720,84 @@ def create_tracker(
     experiment_name: str,
     run_name: str,
     mode: Literal["develop", "deploy"] = "develop",
+    dotenv_path: str | None = None,
     **kwargs,
 ) -> ExperimentTracker:
     """
-    Factory function to create an experiment tracker.
+    Factory function to create an experiment tracker for the given backend.
+
+    Prefer this function over instantiating tracker classes directly, as it
+    keeps backend-specific imports isolated.
 
     Parameters
     ----------
-    backend : Literal["vertex_ai", "mlflow"]
-        The backend to use for experiment tracking.
+    backend : {"vertex_ai", "mlflow", "wandb"}
+        The experiment tracking backend to use.
     experiment_name : str
-        The name of the experiment.
+        Name of the experiment.
     run_name : str
-        The name of the experiment run.
-    mode : Literal['develop', 'deploy'], optional (default="develop")
-        The mode of the experiment tracker.
+        Name of this run within the experiment.
+    mode : {"develop", "deploy"}, optional
+        ``"develop"`` enables logging (default). ``"deploy"`` disables it.
+    dotenv_path : str or None, optional
+        Path to a ``.env`` file containing credentials and config. Cannot be
+        combined with a kwarg whose corresponding env var is also in the file.
     **kwargs
-        Additional arguments specific to the backend.
+        Backend-specific arguments forwarded to the tracker constructor.
 
-        For vertex_ai:
-            - project: str - GCP project ID
-            - location: str - GCP location
-            - bucket_name: str - GCS bucket name
-            - experiment_description: str - Experiment description
-            - experiment_tensorboard: bool - Use TensorBoard
+        For ``"vertex_ai"``:
+            - ``project`` (str) — GCP project ID (env: ``GOOGLE_CLOUD_PROJECT``)
+            - ``location`` (str) — GCP region, e.g. ``"us-central1"``
+              (env: ``GOOGLE_CLOUD_LOCATION``)
+            - ``bucket_name`` (str) — GCS bucket URI
+              (env: ``VERTEX_STAGING_BUCKET``)
+            - ``experiment_description`` (str) — Short experiment description
+            - ``experiment_tensorboard`` (bool) — Enable TensorBoard
+            - Credentials: ``GOOGLE_APPLICATION_CREDENTIALS`` in ``.env``
 
-        For mlflow:
-            - tracking_uri: str - MLflow tracking server URI
-            - artifact_location: str - Artifact storage location
-            - tags: dict[str, str] - Run tags
+        For ``"mlflow"``:
+            - ``tracking_uri`` (str) — Tracking server URI
+              (env: ``MLFLOW_TRACKING_URI``)
+            - ``artifact_location`` (str) — Artifact storage path
+              (env: ``MLFLOW_ARTIFACT_LOCATION``)
+            - ``tags`` (dict[str, str]) — Run tags
+            - Credentials: ``MLFLOW_TRACKING_USERNAME`` /
+              ``MLFLOW_TRACKING_PASSWORD`` in ``.env``
 
-        For wandb:
-            - entity: str - wandb entity (username or team)
-            - tags: list[str] - Run tags
-            - config: dict - Initial hyperparameters
+        For ``"wandb"``:
+            - ``entity`` (str) — wandb username or team
+              (env: ``WANDB_ENTITY``)
+            - ``tags`` (list[str]) — Run tags
+            - ``config`` (dict) — Initial hyperparameters
+            - Credentials: ``WANDB_API_KEY`` in ``.env``
 
     Returns
     -------
     ExperimentTracker
-        An instance of the appropriate tracker class.
+        A ready-to-use tracker instance. Use it as a context manager.
+
+    Raises
+    ------
+    ValueError
+        If ``backend`` is not one of the supported values.
 
     Examples
     --------
-    >>> # Vertex AI
-    >>> tracker = create_tracker(
-    ...     backend="vertex_ai",
-    ...     experiment_name="my-exp",
-    ...     run_name="run-001",
-    ...     project="my-gcp-project",
-    ...     location="us-central1",
-    ...     bucket_name="my-bucket",
-    ... )
-
-    >>> # MLflow
-    >>> tracker = create_tracker(
-    ...     backend="mlflow",
-    ...     experiment_name="my-exp",
-    ...     run_name="run-001",
-    ...     tracking_uri="http://localhost:5000",
-    ... )
-
-    >>> # Weights & Biases
     >>> tracker = create_tracker(
     ...     backend="wandb",
-    ...     experiment_name="my-project",
-    ...     run_name="run-001",
-    ...     entity="my-team",
+    ...     experiment_name="credit-model",
+    ...     run_name="xgb-v1",
+    ...     dotenv_path=".env",
+    ... )
+    >>> with tracker:
+    ...     tracker.log_params({"learning_rate": 0.01, "max_depth": 6})
+    ...     tracker.log_metrics({"auc": 0.87}, step=1)
+
+    >>> tracker = create_tracker(
+    ...     backend="mlflow",
+    ...     experiment_name="credit-model",
+    ...     run_name="xgb-v1",
+    ...     tracking_uri="http://localhost:5000",
     ... )
     """
     if backend == "vertex_ai":
@@ -623,6 +810,7 @@ def create_tracker(
             bucket_name=kwargs.get("bucket_name"),
             experiment_description=kwargs.get("experiment_description"),
             experiment_tensorboard=kwargs.get("experiment_tensorboard", False),
+            dotenv_path=dotenv_path,
         )
     elif backend == "mlflow":
         return MLflowTracker(
@@ -632,6 +820,7 @@ def create_tracker(
             tracking_uri=kwargs.get("tracking_uri"),
             artifact_location=kwargs.get("artifact_location"),
             tags=kwargs.get("tags"),
+            dotenv_path=dotenv_path,
         )
     elif backend == "wandb":
         return WandbTracker(
@@ -641,6 +830,7 @@ def create_tracker(
             entity=kwargs.get("entity"),
             tags=kwargs.get("tags"),
             config=kwargs.get("config"),
+            dotenv_path=dotenv_path,
         )
     else:
         raise ValueError(f"Unknown backend: {backend}. Choose 'vertex_ai', 'mlflow', or 'wandb'.")

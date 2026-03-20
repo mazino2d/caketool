@@ -113,3 +113,6 @@ _version.py
 notebook.ipynb
 
 **/catboost_info
+
+# Weights & Biases
+wandb/
