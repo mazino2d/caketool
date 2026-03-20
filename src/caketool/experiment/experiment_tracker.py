@@ -393,8 +393,155 @@ class MLflowTracker(ExperimentTracker):
             self._run = None
 
 
+class WandbTracker(ExperimentTracker):
+    """
+    Experiment tracker using Weights & Biases (wandb).
+
+    Parameters
+    ----------
+    experiment_name : str
+        The name of the experiment (maps to wandb project).
+    run_name : str
+        The name of the experiment run.
+    mode : Literal['develop', 'deploy'], optional (default="develop")
+        The mode of the experiment tracker. "develop" enables logging,
+        "deploy" disables logging.
+    entity : str, optional (default=None)
+        The wandb entity (username or team name).
+    tags : list[str], optional (default=None)
+        Tags to associate with the run.
+    config : dict, optional (default=None)
+        Initial config/hyperparameters to log.
+    """
+
+    @require_dependencies("wandb")
+    def __init__(
+        self,
+        experiment_name: str,
+        run_name: str,
+        mode: Literal["develop", "deploy"] = "develop",
+        entity: str = None,
+        tags: list[str] = None,
+        config: dict = None,
+    ) -> None:
+        import wandb
+
+        super().__init__(experiment_name, run_name, mode)
+        self.entity = entity
+        self.tags = tags
+        self.config = config or {}
+        self._wandb = wandb
+        self._run = None
+
+    def log_params(self, params: dict[str, float | int | str]) -> None:
+        """
+        Log parameters to the wandb run config.
+
+        Parameters
+        ----------
+        params : dict[str, float | int | str]
+            A dictionary of parameters to log.
+        """
+        if self.mode == "develop" and self._run:
+            self._run.config.update(params)
+
+    def log_metrics(self, metrics: dict[str, float | int | str], step: int | None = None) -> None:
+        """
+        Log metrics to the wandb run.
+
+        Parameters
+        ----------
+        metrics : dict[str, float | int | str]
+            A dictionary of metrics to log.
+        step : int, optional
+            The step/iteration number.
+        """
+        if self.mode == "develop" and self._run:
+            self._run.log(metrics, step=step)
+
+    def log_file(self, filename: str, artifact_id: str) -> None:
+        """
+        Log a file as a wandb artifact.
+
+        Parameters
+        ----------
+        filename : str
+            The path to the file to log.
+        artifact_id : str
+            The name for the artifact.
+        """
+        if self.mode == "develop" and self._run:
+            artifact = self._wandb.Artifact(artifact_id, type="file")
+            artifact.add_file(filename)
+            self._run.log_artifact(artifact)
+
+    def log_pickle(self, var: object, artifact_id: str) -> None:
+        """
+        Log a pickled object as a wandb artifact.
+
+        Parameters
+        ----------
+        var : object
+            The object to pickle and log.
+        artifact_id : str
+            The name for the artifact.
+        """
+        if self.mode == "develop" and self._run:
+            import os
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                filepath = os.path.join(tmpdir, f"{artifact_id}.pkl")
+                with open(filepath, "wb") as f:
+                    pickle.dump(var, f)
+                artifact = self._wandb.Artifact(artifact_id, type="pickle")
+                artifact.add_file(filepath)
+                self._run.log_artifact(artifact)
+
+    def load_pickle(self, artifact_id: str) -> object:
+        """
+        Load a pickled object from a wandb artifact.
+
+        Parameters
+        ----------
+        artifact_id : str
+            The name of the artifact to load.
+
+        Returns
+        -------
+        object
+            The unpickled object.
+        """
+        if self._run is None:
+            raise RuntimeError("No active run. Use within context manager or start a run first.")
+
+        artifact = self._run.use_artifact(f"{artifact_id}:latest")
+        artifact_dir = artifact.download()
+        filepath = f"{artifact_dir}/{artifact_id}.pkl"
+        with open(filepath, "rb") as f:
+            return pickle.load(f)
+
+    def __enter__(self):
+        """Enter the runtime context for the experiment tracker."""
+        if self.mode == "develop":
+            self._run = self._wandb.init(
+                project=self.experiment_name,
+                name=self.run_name,
+                entity=self.entity,
+                tags=self.tags,
+                config=self.config,
+            )
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        """Exit the runtime context for the experiment tracker."""
+        if self.mode == "develop" and self._run:
+            self._run.finish()
+            self._run = None
+
+
 def create_tracker(
-    backend: Literal["vertex_ai", "mlflow"],
+    backend: Literal["vertex_ai", "mlflow", "wandb"],
     experiment_name: str,
     run_name: str,
     mode: Literal["develop", "deploy"] = "develop",
@@ -428,6 +575,11 @@ def create_tracker(
             - artifact_location: str - Artifact storage location
             - tags: dict[str, str] - Run tags
 
+        For wandb:
+            - entity: str - wandb entity (username or team)
+            - tags: list[str] - Run tags
+            - config: dict - Initial hyperparameters
+
     Returns
     -------
     ExperimentTracker
@@ -452,6 +604,14 @@ def create_tracker(
     ...     run_name="run-001",
     ...     tracking_uri="http://localhost:5000",
     ... )
+
+    >>> # Weights & Biases
+    >>> tracker = create_tracker(
+    ...     backend="wandb",
+    ...     experiment_name="my-project",
+    ...     run_name="run-001",
+    ...     entity="my-team",
+    ... )
     """
     if backend == "vertex_ai":
         return VertexAITracker(
@@ -473,5 +633,14 @@ def create_tracker(
             artifact_location=kwargs.get("artifact_location"),
             tags=kwargs.get("tags"),
         )
+    elif backend == "wandb":
+        return WandbTracker(
+            experiment_name=experiment_name,
+            run_name=run_name,
+            mode=mode,
+            entity=kwargs.get("entity"),
+            tags=kwargs.get("tags"),
+            config=kwargs.get("config"),
+        )
     else:
-        raise ValueError(f"Unknown backend: {backend}. Choose 'vertex_ai' or 'mlflow'.")
+        raise ValueError(f"Unknown backend: {backend}. Choose 'vertex_ai', 'mlflow', or 'wandb'.")
