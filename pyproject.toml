@@ -22,16 +22,19 @@ dependencies = [
     "tqdm",
     "xgboost",
     "category_encoders",
+    "python-dotenv",
 ]
 requires-python = ">=3.10"
 
 [project.optional-dependencies]
 onprem = ["mlflow"]
 gcp = ["google-cloud-aiplatform", "google-cloud-bigquery"]
+wandb = ["wandb"]
 all = [
     "mlflow",
     "google-cloud-aiplatform",
     "google-cloud-bigquery",
+    "wandb",
 ]
 dev = [
     "build",

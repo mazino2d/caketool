@@ -1,8 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
-
-from caketool.monitor import AdversarialModel
+from src.caketool.monitor import AdversarialModel
 
 
 @pytest.fixture

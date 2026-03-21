@@ -44,7 +44,33 @@ DEFAULT_PARAM = {
 
 
 class BoostTree(BaseEstimator, RegressorMixin):
-    def __init__(self, param: dict = DEFAULT_PARAM):
+    """
+    XGBoost-based binary classifier with a built-in preprocessing pipeline.
+
+    The pipeline applies, in order:
+    1. Categorical encoding (default: TargetEncoder)
+    2. Infinity value handling
+    3. Univariate feature removal (by p-value threshold)
+    4. Collinear feature removal (by correlation threshold)
+
+    Parameters
+    ----------
+    param : dict, optional
+        Configuration dict with keys:
+        - ``feature_encoder``: kwargs for FeatureEncoder
+        - ``univariate_feature_remover``: kwargs for UnivariateFeatureRemover
+        - ``colinear_feature_remover``: kwargs for ColinearFeatureRemover
+        - ``model_params``: kwargs for xgb.XGBClassifier
+        Defaults to DEFAULT_PARAM.
+
+    Examples
+    --------
+    >>> model = BoostTree()
+    >>> model.fit(X_train, y_train, eval_set=[(X_val, y_val)])
+    >>> proba = model.predict_proba(X_test)[:, 1]
+    """
+
+    def __init__(self, param: dict = DEFAULT_PARAM) -> None:
         super().__init__()
         self.param = param
         feature_encoder = FeatureEncoder(**param["feature_encoder"])
@@ -67,7 +93,26 @@ class BoostTree(BaseEstimator, RegressorMixin):
             ]
         )
 
-    def fit(self, X, y, eval_set=None, verbose=False):
+    def fit(self, X: pd.DataFrame, y: pd.Series, eval_set: list | None = None, verbose: bool = False) -> "BoostTree":
+        """
+        Fit the preprocessing pipeline and XGBoost model.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Training features.
+        y : pd.Series
+            Binary target labels (0 or 1).
+        eval_set : list of (X, y) tuples, optional
+            Validation sets for early stopping. Each element is preprocessed
+            automatically before being passed to XGBoost.
+        verbose : bool, optional
+            Whether to print XGBoost training logs. Defaults to False.
+
+        Returns
+        -------
+        self : BoostTree
+        """
         self.preprocess.fit(X, y)
         if eval_set is not None and len(eval_set) > 0:
             eval_set = [(self.preprocess.transform(s[0]), s[1]) for s in eval_set]
@@ -79,13 +124,46 @@ class BoostTree(BaseEstimator, RegressorMixin):
         )
         return self
 
-    def predict(self, X: pd.DataFrame):
+    def predict(self, X: pd.DataFrame) -> np.ndarray:
+        """
+        Predict binary class labels.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Input features.
+
+        Returns
+        -------
+        np.ndarray of shape (n_samples,)
+        """
         return self.pipeline.predict(X)
 
-    def predict_proba(self, X: pd.DataFrame):
+    def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
+        """
+        Predict class probabilities.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Input features.
+
+        Returns
+        -------
+        np.ndarray of shape (n_samples, 2)
+            Columns are [P(class=0), P(class=1)].
+        """
         return self.pipeline.predict_proba(X)
 
     def get_feature_importance(self) -> pd.DataFrame:
+        """
+        Return a DataFrame of feature importances across all score types.
+
+        Returns
+        -------
+        pd.DataFrame
+            Columns: feature_name, gain, cover, total_gain, total_cover, weight.
+        """
         feat_importance = None
         for score_type in ["gain", "cover", "total_gain", "total_cover", "weight"]:
             fi_dict = self.model.get_booster().get_score(importance_type=score_type)
@@ -99,9 +177,47 @@ class BoostTree(BaseEstimator, RegressorMixin):
         return feat_importance
 
     def get_feature_names(self) -> list[str]:
+        """Return the list of feature names used by the booster."""
         return self.model.get_booster().feature_names
 
-    def fit_oof(X, y, groups=None, params=DEFAULT_PARAM, n_splits=5, n_repeats=1, random_state=42):
+    def fit_oof(
+        X: pd.DataFrame,
+        y: pd.Series,
+        groups: pd.Series | None = None,
+        params: dict = DEFAULT_PARAM,
+        n_splits: int = 5,
+        n_repeats: int = 1,
+        random_state: int = 42,
+    ) -> tuple[list["BoostTree"], np.ndarray, np.ndarray]:
+        """
+        Fit models using out-of-fold (OOF) cross-validation.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Training features.
+        y : pd.Series
+            Binary target labels.
+        groups : pd.Series, optional
+            Group labels for stratified splitting. Defaults to y.
+        params : dict, optional
+            BoostTree parameter dict. Defaults to DEFAULT_PARAM.
+        n_splits : int, optional
+            Number of CV folds. Defaults to 5.
+        n_repeats : int, optional
+            Number of times to repeat CV. Defaults to 1.
+        random_state : int, optional
+            Random seed. Defaults to 42.
+
+        Returns
+        -------
+        models : list[BoostTree]
+            Fitted model for each fold.
+        oof_predictions : np.ndarray
+            Concatenated OOF probability predictions.
+        oof_labels : np.ndarray
+            Concatenated OOF true labels.
+        """
         skf = RepeatedStratifiedKFold(n_splits=n_splits, n_repeats=n_repeats, random_state=random_state)
         oof_predictions = []
         oof_labels = []
@@ -121,14 +237,56 @@ class BoostTree(BaseEstimator, RegressorMixin):
 
 
 class EnsembleBoostTree(BaseEstimator, RegressorMixin):
-    def __init__(self, estimators: list[BoostTree]):
+    """
+    Ensemble of BoostTree models that averages predictions across all estimators.
+
+    Each estimator may have been trained on a different feature subset or fold.
+    Predictions are automatically restricted to each estimator's own feature set.
+
+    Parameters
+    ----------
+    estimators : list[BoostTree]
+        Fitted BoostTree models to ensemble.
+
+    Examples
+    --------
+    >>> models, _, _ = BoostTree.fit_oof(X_train, y_train)
+    >>> ensemble = EnsembleBoostTree(models)
+    >>> proba = ensemble.predict_proba(X_test)[:, 1]
+    """
+
+    def __init__(self, estimators: list[BoostTree]) -> None:
         self.estimators = estimators
 
-    def predict(self, X: pd.DataFrame):
+    def predict(self, X: pd.DataFrame) -> np.ndarray:
+        """
+        Predict by averaging class predictions from all estimators.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Input features (must contain all feature columns).
+
+        Returns
+        -------
+        np.ndarray of shape (n_samples,)
+        """
         y_preds = [estimator.predict(X[estimator.get_feature_names()]) for estimator in self.estimators]
         return np.mean(y_preds, axis=0)
 
-    def predict_proba(self, X: pd.DataFrame):
+    def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
+        """
+        Predict class probabilities by averaging across all estimators.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Input features (must contain all feature columns).
+
+        Returns
+        -------
+        np.ndarray of shape (n_samples, 2)
+        """
         y_preds = [estimator.predict_proba(X[estimator.get_feature_names()]) for estimator in self.estimators]
         return np.mean(y_preds, axis=0)
 

@@ -122,13 +122,35 @@ class ColinearFeatureRemover(FeatureRemover):
 
 
 class UnivariateFeatureRemover(FeatureRemover):
-    def __init__(self, score_func: callable = f_classif, threshold=0.05):
+    """
+    Transformer that removes features with low univariate statistical relevance.
+
+    Uses a scoring function (default: F-test for classification) to compute a
+    p-value per feature. Features whose p-value exceeds the threshold are dropped.
+
+    Parameters
+    ----------
+    score_func : callable, optional (default=f_classif)
+        Univariate scoring function following the sklearn API: takes (X, y) and
+        returns (scores, p_values). Common choices: f_classif, chi2, f_regression.
+    threshold : float, optional (default=0.05)
+        Maximum allowed p-value. Features with p_value > threshold are removed.
+
+    Attributes
+    ----------
+    feature_importance : pd.DataFrame or None
+        DataFrame with columns ['features', 'f_statistic', 'p_values'] after fit.
+    droped_cols : list[str]
+        Names of columns identified for removal (available after fit).
+    """
+
+    def __init__(self, score_func: callable = f_classif, threshold: float = 0.05) -> None:
         super().__init__([])
         self.score_func = score_func
         self.threshold = threshold
         self.feature_importance = None
 
-    def fit(self, X: pd.DataFrame, y: pd.Series = None):
+    def fit(self, X: pd.DataFrame, y: pd.Series = None) -> "UnivariateFeatureRemover":
         f_statistic, p_values = self.score_func(X, y)
         self.feature_importance = pd.DataFrame(
             {"features": X.columns, "f_statistic": f_statistic, "p_values": p_values}

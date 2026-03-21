@@ -469,6 +469,156 @@ class TestVertexAITrackerUnit:
         tracker.experiment_run.log_time_series_metrics.assert_called_once_with(metrics, step=10)
 
 
+@pytest.fixture
+def mock_wandb_module():
+    """Set up mock wandb module in sys.modules."""
+    mock_wandb = MagicMock()
+    mock_run = MagicMock()
+    mock_wandb.init.return_value = mock_run
+
+    original_modules = sys.modules.copy()
+    sys.modules["wandb"] = mock_wandb
+
+    yield mock_wandb, mock_run
+
+    sys.modules.clear()
+    sys.modules.update(original_modules)
+
+
+class TestWandbTrackerUnit:
+    """Unit tests for WandbTracker class."""
+
+    def test_init(self, mock_wandb_module):
+        """Test WandbTracker initialization."""
+        import importlib
+
+        import src.caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+
+        mock_wandb, _ = mock_wandb_module
+        tracker = tracker_module.WandbTracker(
+            experiment_name="my-project",
+            run_name="run-001",
+            entity="my-team",
+            tags=["v1"],
+        )
+
+        assert tracker.experiment_name == "my-project"
+        assert tracker.run_name == "run-001"
+        assert tracker.entity == "my-team"
+        assert tracker.tags == ["v1"]
+
+    def test_context_manager_develop_mode(self, mock_wandb_module):
+        """Test WandbTracker context manager calls wandb.init and finish."""
+        import importlib
+
+        import src.caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+
+        mock_wandb, mock_run = mock_wandb_module
+        tracker = tracker_module.WandbTracker(
+            experiment_name="my-project",
+            run_name="run-001",
+            mode="develop",
+        )
+
+        with tracker:
+            mock_wandb.init.assert_called_once_with(
+                project="my-project",
+                name="run-001",
+                entity=None,
+                tags=None,
+                config={},
+            )
+            assert tracker._run == mock_run
+
+        mock_run.finish.assert_called_once()
+        assert tracker._run is None
+
+    def test_context_manager_deploy_mode_no_run(self, mock_wandb_module):
+        """Test WandbTracker context manager in deploy mode does not init."""
+        import importlib
+
+        import src.caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+
+        mock_wandb, _ = mock_wandb_module
+        tracker = tracker_module.WandbTracker(
+            experiment_name="my-project",
+            run_name="run-001",
+            mode="deploy",
+        )
+
+        with tracker:
+            mock_wandb.init.assert_not_called()
+            assert tracker._run is None
+
+    def test_log_params(self, mock_wandb_module):
+        """Test logging params updates run config."""
+        import importlib
+
+        import src.caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+
+        mock_wandb, mock_run = mock_wandb_module
+        tracker = tracker_module.WandbTracker(experiment_name="proj", run_name="run-001")
+
+        params = {"lr": 0.01, "depth": 6}
+        with tracker:
+            tracker.log_params(params)
+            mock_run.config.update.assert_called_once_with(params)
+
+    def test_log_metrics(self, mock_wandb_module):
+        """Test logging metrics calls run.log."""
+        import importlib
+
+        import src.caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+
+        mock_wandb, mock_run = mock_wandb_module
+        tracker = tracker_module.WandbTracker(experiment_name="proj", run_name="run-001")
+
+        metrics = {"accuracy": 0.95}
+        with tracker:
+            tracker.log_metrics(metrics, step=3)
+            mock_run.log.assert_called_once_with(metrics, step=3)
+
+    def test_log_params_deploy_mode_no_op(self, mock_wandb_module):
+        """Test that logging in deploy mode is a no-op."""
+        import importlib
+
+        import src.caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+
+        mock_wandb, mock_run = mock_wandb_module
+        tracker = tracker_module.WandbTracker(experiment_name="proj", run_name="run-001", mode="deploy")
+
+        with tracker:
+            tracker.log_params({"param": 1})
+            tracker.log_metrics({"metric": 0.5})
+            mock_run.config.update.assert_not_called()
+            mock_run.log.assert_not_called()
+
+    def test_load_pickle_without_run_raises(self, mock_wandb_module):
+        """Test that load_pickle raises error without active run."""
+        import importlib
+
+        import src.caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+
+        tracker = tracker_module.WandbTracker(experiment_name="proj", run_name="run-001")
+
+        with pytest.raises(RuntimeError, match="No active run"):
+            tracker.load_pickle("model")
+
+
 class TestCreateTrackerIntegration:
     """Integration tests for create_tracker factory function."""
 
@@ -511,6 +661,26 @@ class TestCreateTrackerIntegration:
         assert isinstance(tracker, tracker_module.VertexAITracker)
         assert tracker.experiment_name == "test-exp"
         assert tracker.project == "test-project"
+
+    def test_create_wandb_tracker(self, mock_wandb_module):
+        """Test creating wandb tracker via factory."""
+        import importlib
+
+        import src.caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+
+        mock_wandb, _ = mock_wandb_module
+        tracker = tracker_module.create_tracker(
+            backend="wandb",
+            experiment_name="my-project",
+            run_name="run-001",
+            entity="my-team",
+        )
+
+        assert isinstance(tracker, tracker_module.WandbTracker)
+        assert tracker.experiment_name == "my-project"
+        assert tracker.entity == "my-team"
 
     def test_create_tracker_with_deploy_mode(self, mock_mlflow_module):
         """Test creating tracker in deploy mode."""
