@@ -211,6 +211,14 @@ class ShapExplainer(BaseEstimator):
         top_df["direction"] = top_df["shap_value"].apply(lambda v: "positive" if v >= 0 else "negative")
         return top_df.reset_index(drop=True)
 
+    def _get_base_value(self) -> float:
+        """Extract base value from explainer for plotting."""
+        expected = self.explainer_.expected_value
+        if isinstance(expected, list | np.ndarray):
+            arr = np.array(expected).flatten()
+            return float(arr[1]) if len(arr) >= 2 else float(arr[0])
+        return float(expected)
+
     @require_dependencies("shap")
     def show_summary(self, plot_type: str = "bar", max_display: int = 20) -> None:
         """
@@ -231,13 +239,27 @@ class ShapExplainer(BaseEstimator):
         self._check_fitted()
         import shap
 
-        shap.summary_plot(
-            self.shap_values_,
-            features=self._X_fit,
+        # Create Explanation object for newer SHAP API
+        explanation = shap.Explanation(
+            values=self.shap_values_,
+            base_values=self._get_base_value(),
+            data=self._X_fit.values if hasattr(self._X_fit, "values") else self._X_fit,
             feature_names=self.feature_names_,
-            plot_type=plot_type,
-            max_display=max_display,
         )
+
+        if plot_type == "beeswarm":
+            shap.plots.beeswarm(explanation, max_display=max_display)
+        elif plot_type == "bar":
+            shap.plots.bar(explanation, max_display=max_display)
+        else:
+            # Fallback for dot or other types
+            shap.summary_plot(
+                self.shap_values_,
+                features=self._X_fit,
+                feature_names=self.feature_names_,
+                plot_type=plot_type,
+                max_display=max_display,
+            )
 
     @require_dependencies("shap")
     def show_waterfall(self, X, row_index: int = 0, max_display: int = 15) -> None:
@@ -263,16 +285,9 @@ class ShapExplainer(BaseEstimator):
 
         row_data = X.iloc[row_index].values if isinstance(X, pd.DataFrame) else X[row_index]
 
-        expected = self.explainer_.expected_value
-        if isinstance(expected, list | np.ndarray):
-            arr = np.array(expected).flatten()
-            base_value = float(arr[1]) if len(arr) >= 2 else float(arr[0])
-        else:
-            base_value = float(expected)
-
         explanation = shap.Explanation(
             values=self.shap_values_[row_index],
-            base_values=base_value,
+            base_values=self._get_base_value(),
             data=row_data,
             feature_names=self.feature_names_,
         )
