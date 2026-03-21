@@ -30,11 +30,13 @@ requires-python = ">=3.10"
 onprem = ["mlflow"]
 gcp = ["google-cloud-aiplatform", "google-cloud-bigquery"]
 wandb = ["wandb"]
+explainability = ["shap"]
 all = [
     "mlflow",
     "google-cloud-aiplatform",
     "google-cloud-bigquery",
     "wandb",
+    "shap",
 ]
 dev = [
     "build",
