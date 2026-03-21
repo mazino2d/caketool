@@ -509,12 +509,13 @@ class TestWandbTrackerUnit:
         assert tracker.entity == "my-team"
         assert tracker.tags == ["v1"]
 
-    def test_context_manager_develop_mode(self, mock_wandb_module):
+    def test_context_manager_develop_mode(self, mock_wandb_module, monkeypatch):
         """Test WandbTracker context manager calls wandb.init and finish."""
         import importlib
 
         import src.caketool.experiment.experiment_tracker as tracker_module
 
+        monkeypatch.delenv("WANDB_ENTITY", raising=False)
         importlib.reload(tracker_module)
 
         mock_wandb, mock_run = mock_wandb_module
