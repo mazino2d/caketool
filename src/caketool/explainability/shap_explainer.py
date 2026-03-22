@@ -124,8 +124,14 @@ class ShapExplainer(BaseEstimator):
         Returns
         -------
         pd.DataFrame
-            Columns: feature, mean_abs_shap, rank. Sorted by mean_abs_shap descending,
-            rank starts at 1.
+            Columns: rank, feature, importance_pct, direction, mean_abs_shap.
+            - rank: importance ranking (1 = most important)
+            - feature: feature name
+            - importance_pct: normalized importance (0-1 scale, sums to 1)
+            - direction: "positive" if feature generally increases prediction,
+              "negative" if it decreases prediction (based on mean SHAP value)
+            - mean_abs_shap: mean absolute SHAP value across all samples
+            Sorted by importance descending.
 
         Raises
         ------
@@ -134,10 +140,22 @@ class ShapExplainer(BaseEstimator):
         """
         self._check_fitted()
         mean_abs = np.abs(self.shap_values_).mean(axis=0)
-        df = pd.DataFrame({"feature": self.feature_names_, "mean_abs_shap": mean_abs})
+        mean_shap = self.shap_values_.mean(axis=0)
+
+        total_importance = mean_abs.sum()
+        importance_pct = mean_abs / total_importance if total_importance > 0 else mean_abs
+
+        df = pd.DataFrame(
+            {
+                "feature": self.feature_names_,
+                "mean_abs_shap": mean_abs,
+                "importance_pct": importance_pct,
+                "direction": ["positive" if v >= 0 else "negative" for v in mean_shap],
+            }
+        )
         df = df.sort_values("mean_abs_shap", ascending=False).reset_index(drop=True)
         df["rank"] = np.arange(1, len(df) + 1)
-        return df
+        return df[["rank", "feature", "importance_pct", "direction", "mean_abs_shap"]]
 
     def get_local_explanation(self, X, row_index: int = 0) -> pd.DataFrame:
         """
@@ -220,14 +238,16 @@ class ShapExplainer(BaseEstimator):
         return float(expected)
 
     @require_dependencies("shap")
-    def show_summary(self, plot_type: str = "bar", max_display: int = 20) -> None:
+    def show_summary(self, max_display: int = 20) -> None:
         """
-        Display a SHAP summary plot.
+        Display a SHAP beeswarm summary plot.
+
+        Each dot represents one sample. Colour encodes the feature value
+        (red = high, blue = low). Position on x-axis shows whether the
+        feature pushed the prediction up (positive SHAP) or down (negative).
 
         Parameters
         ----------
-        plot_type : {"bar", "beeswarm", "dot"}, optional
-            Type of summary plot. Defaults to "bar".
         max_display : int, optional
             Maximum number of features to display. Defaults to 20.
 
@@ -239,27 +259,13 @@ class ShapExplainer(BaseEstimator):
         self._check_fitted()
         import shap
 
-        # Create Explanation object for newer SHAP API
         explanation = shap.Explanation(
             values=self.shap_values_,
             base_values=self._get_base_value(),
             data=self._X_fit.values if hasattr(self._X_fit, "values") else self._X_fit,
             feature_names=self.feature_names_,
         )
-
-        if plot_type == "beeswarm":
-            shap.plots.beeswarm(explanation, max_display=max_display)
-        elif plot_type == "bar":
-            shap.plots.bar(explanation, max_display=max_display)
-        else:
-            # Fallback for dot or other types
-            shap.summary_plot(
-                self.shap_values_,
-                features=self._X_fit,
-                feature_names=self.feature_names_,
-                plot_type=plot_type,
-                max_display=max_display,
-            )
+        shap.plots.beeswarm(explanation, max_display=max_display)
 
     @require_dependencies("shap")
     def show_waterfall(self, X, row_index: int = 0, max_display: int = 15) -> None:
