@@ -110,7 +110,7 @@ class TestGetFeatureImportance:
 
     def test_correct_columns(self, fitted_explainer):
         result = fitted_explainer.get_feature_importance()
-        assert set(result.columns) == {"feature", "mean_abs_shap", "rank"}
+        assert set(result.columns) == {"rank", "feature", "importance_pct", "direction", "mean_abs_shap"}
 
     def test_sorted_descending(self, fitted_explainer):
         result = fitted_explainer.get_feature_importance()
@@ -141,40 +141,29 @@ class TestGetFeatureImportance:
 
 class TestGetLocalExplanation:
     def test_returns_dataframe(self, fitted_explainer, dataset):
-        X, _ = dataset
-        result = fitted_explainer.get_local_explanation(X, row_index=0)
+        result = fitted_explainer.get_local_explanation(row_index=0)
         assert isinstance(result, pd.DataFrame)
 
     def test_correct_columns(self, fitted_explainer, dataset):
-        X, _ = dataset
-        result = fitted_explainer.get_local_explanation(X, row_index=0)
-        assert set(result.columns) == {"feature", "feature_value", "shap_value", "abs_shap"}
+        result = fitted_explainer.get_local_explanation(row_index=0)
+        assert set(result.columns) == {"rank", "feature", "importance_pct", "direction", "feature_value", "shap_value"}
 
-    def test_sorted_by_abs_shap(self, fitted_explainer, dataset):
-        X, _ = dataset
-        result = fitted_explainer.get_local_explanation(X, row_index=0)
-        assert result["abs_shap"].is_monotonic_decreasing
+    def test_sorted_by_importance(self, fitted_explainer, dataset):
+        result = fitted_explainer.get_local_explanation(row_index=0)
+        assert result["importance_pct"].is_monotonic_decreasing
 
     def test_row_count_equals_n_features(self, fitted_explainer, dataset):
-        X, _ = dataset
-        result = fitted_explainer.get_local_explanation(X, row_index=0)
+        result = fitted_explainer.get_local_explanation(row_index=0)
         assert len(result) == len(fitted_explainer.feature_names_)
 
-    def test_accepts_numpy(self, fitted_explainer, dataset):
-        X, _ = dataset
-        result = fitted_explainer.get_local_explanation(X.values, row_index=0)
-        assert len(result) == X.shape[1]
-
     def test_raises_index_error_out_of_bounds(self, fitted_explainer, dataset):
-        X, _ = dataset
         with pytest.raises(IndexError):
-            fitted_explainer.get_local_explanation(X, row_index=999)
+            fitted_explainer.get_local_explanation(row_index=999)
 
     def test_raises_before_fit(self, fitted_model, dataset):
-        X, _ = dataset
         e = ShapExplainer(model=fitted_model)
         with pytest.raises(RuntimeError, match="has not been fitted"):
-            e.get_local_explanation(X)
+            e.get_local_explanation()
 
 
 # ---------------------------------------------------------------------------
@@ -184,18 +173,15 @@ class TestGetLocalExplanation:
 
 class TestGetTopDrivers:
     def test_returns_exactly_n_rows(self, fitted_explainer, dataset):
-        X, _ = dataset
-        result = fitted_explainer.get_top_drivers(X, row_index=0, n=5)
+        result = fitted_explainer.get_top_drivers(row_index=0, n=5)
         assert len(result) == 5
 
     def test_direction_values_valid(self, fitted_explainer, dataset):
-        X, _ = dataset
-        result = fitted_explainer.get_top_drivers(X, row_index=0, n=10)
+        result = fitted_explainer.get_top_drivers(row_index=0, n=10)
         assert set(result["direction"]).issubset({"positive", "negative"})
 
     def test_direction_consistent_with_shap_sign(self, fitted_explainer, dataset):
-        X, _ = dataset
-        result = fitted_explainer.get_top_drivers(X, row_index=0, n=10)
+        result = fitted_explainer.get_top_drivers(row_index=0, n=10)
         for _, row in result.iterrows():
             if row["shap_value"] >= 0:
                 assert row["direction"] == "positive"
@@ -203,9 +189,8 @@ class TestGetTopDrivers:
                 assert row["direction"] == "negative"
 
     def test_n_greater_than_features_returns_all(self, fitted_explainer, dataset):
-        X, _ = dataset
         n_features = len(fitted_explainer.feature_names_)
-        result = fitted_explainer.get_top_drivers(X, row_index=0, n=n_features + 100)
+        result = fitted_explainer.get_top_drivers(row_index=0, n=n_features + 100)
         assert len(result) == n_features
 
 
@@ -215,20 +200,14 @@ class TestGetTopDrivers:
 
 
 class TestShowMethods:
-    def test_show_summary_smoke(self, fitted_explainer):
-        with patch("shap.summary_plot") as mock_plot:
-            fitted_explainer.show_summary(plot_type="bar", max_display=10)
-            mock_plot.assert_called_once()
-
     def test_show_summary_beeswarm_smoke(self, fitted_explainer):
-        with patch("shap.summary_plot") as mock_plot:
-            fitted_explainer.show_summary(plot_type="beeswarm", max_display=10)
+        with patch("shap.plots.beeswarm") as mock_plot:
+            fitted_explainer.show_summary(max_display=10)
             mock_plot.assert_called_once()
 
     def test_show_waterfall_smoke(self, fitted_explainer, dataset):
-        X, _ = dataset
         with patch("shap.waterfall_plot") as mock_plot:
-            fitted_explainer.show_waterfall(X, row_index=0, max_display=10)
+            fitted_explainer.show_waterfall(row_index=0, max_display=10)
             mock_plot.assert_called_once()
 
     def test_show_dependence_invalid_feature_raises(self, fitted_explainer):
@@ -241,10 +220,9 @@ class TestShowMethods:
             e.show_summary()
 
     def test_show_waterfall_raises_before_fit(self, fitted_model, dataset):
-        X, _ = dataset
         e = ShapExplainer(model=fitted_model)
         with pytest.raises(RuntimeError, match="has not been fitted"):
-            e.show_waterfall(X)
+            e.show_waterfall()
 
     def test_show_dependence_raises_before_fit(self, fitted_model):
         e = ShapExplainer(model=fitted_model)

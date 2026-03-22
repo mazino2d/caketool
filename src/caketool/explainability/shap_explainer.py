@@ -157,22 +157,26 @@ class ShapExplainer(BaseEstimator):
         df["rank"] = np.arange(1, len(df) + 1)
         return df[["rank", "feature", "importance_pct", "direction", "mean_abs_shap"]]
 
-    def get_local_explanation(self, X, row_index: int = 0) -> pd.DataFrame:
+    def get_local_explanation(self, row_index: int = 0) -> pd.DataFrame:
         """
         Return SHAP explanation for a single sample.
 
         Parameters
         ----------
-        X : pd.DataFrame or np.ndarray of shape (n_samples, n_features)
-            Input data.
         row_index : int, optional
             Index of the sample to explain. Defaults to 0.
 
         Returns
         -------
         pd.DataFrame
-            Columns: feature, feature_value, shap_value, abs_shap.
-            Sorted by abs_shap descending.
+            Columns: rank, feature, importance_pct, direction, feature_value, shap_value.
+            - rank: importance ranking for this sample (1 = most important)
+            - feature: feature name
+            - importance_pct: normalized importance (0-1 scale, sums to 1)
+            - direction: "positive" if feature pushes prediction up, else "negative"
+            - feature_value: actual feature value for this sample
+            - shap_value: SHAP value for this sample
+            Sorted by importance descending.
 
         Raises
         ------
@@ -182,31 +186,36 @@ class ShapExplainer(BaseEstimator):
             If called before fit.
         """
         self._check_fitted()
-        n = len(X) if isinstance(X, pd.DataFrame) else X.shape[0]
+        n = len(self._X_fit)
         if row_index < 0 or row_index >= n:
             raise IndexError(f"row_index {row_index} is out of bounds for input with {n} rows.")
 
-        feature_values = X.iloc[row_index].values if isinstance(X, pd.DataFrame) else X[row_index]
+        feature_values = self._X_fit.iloc[row_index].values
         shap_vals = self.shap_values_[row_index]
+        abs_shap = np.abs(shap_vals)
+
+        total_importance = abs_shap.sum()
+        importance_pct = abs_shap / total_importance if total_importance > 0 else abs_shap
 
         df = pd.DataFrame(
             {
                 "feature": self.feature_names_,
                 "feature_value": feature_values,
                 "shap_value": shap_vals,
-                "abs_shap": np.abs(shap_vals),
+                "importance_pct": importance_pct,
+                "direction": ["positive" if v >= 0 else "negative" for v in shap_vals],
             }
         )
-        return df.sort_values("abs_shap", ascending=False).reset_index(drop=True)
+        df = df.sort_values("importance_pct", ascending=False).reset_index(drop=True)
+        df["rank"] = np.arange(1, len(df) + 1)
+        return df[["rank", "feature", "importance_pct", "direction", "feature_value", "shap_value"]]
 
-    def get_top_drivers(self, X, row_index: int = 0, n: int = 10) -> pd.DataFrame:
+    def get_top_drivers(self, row_index: int = 0, n: int = 10) -> pd.DataFrame:
         """
         Return the top-N most influential features for a single sample.
 
         Parameters
         ----------
-        X : pd.DataFrame or np.ndarray of shape (n_samples, n_features)
-            Input data.
         row_index : int, optional
             Index of the sample to explain. Defaults to 0.
         n : int, optional
@@ -215,8 +224,7 @@ class ShapExplainer(BaseEstimator):
         Returns
         -------
         pd.DataFrame
-            Top-N rows from get_local_explanation with an added direction column
-            ("positive" or "negative").
+            Top-N rows from get_local_explanation.
 
         Raises
         ------
@@ -224,10 +232,8 @@ class ShapExplainer(BaseEstimator):
             If called before fit.
         """
         self._check_fitted()
-        local_df = self.get_local_explanation(X, row_index=row_index)
-        top_df = local_df.head(n).copy()
-        top_df["direction"] = top_df["shap_value"].apply(lambda v: "positive" if v >= 0 else "negative")
-        return top_df.reset_index(drop=True)
+        local_df = self.get_local_explanation(row_index=row_index)
+        return local_df.head(n).reset_index(drop=True)
 
     def _get_base_value(self) -> float:
         """Extract base value from explainer for plotting."""
@@ -268,14 +274,12 @@ class ShapExplainer(BaseEstimator):
         shap.plots.beeswarm(explanation, max_display=max_display)
 
     @require_dependencies("shap")
-    def show_waterfall(self, X, row_index: int = 0, max_display: int = 15) -> None:
+    def show_waterfall(self, row_index: int = 0, max_display: int = 15) -> None:
         """
         Display a SHAP waterfall plot for a single sample.
 
         Parameters
         ----------
-        X : pd.DataFrame or np.ndarray of shape (n_samples, n_features)
-            Input data.
         row_index : int, optional
             Index of the sample to explain. Defaults to 0.
         max_display : int, optional
@@ -289,7 +293,7 @@ class ShapExplainer(BaseEstimator):
         self._check_fitted()
         import shap
 
-        row_data = X.iloc[row_index].values if isinstance(X, pd.DataFrame) else X[row_index]
+        row_data = self._X_fit.iloc[row_index].values
 
         explanation = shap.Explanation(
             values=self.shap_values_[row_index],
