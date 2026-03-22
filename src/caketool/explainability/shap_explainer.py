@@ -24,6 +24,10 @@ class ShapExplainer(BaseEstimator):
         Fitted sklearn-compatible model.
     explainer_type : {"tree", "linear", "kernel"}, optional
         Type of SHAP explainer to use. Defaults to "tree".
+    model_output : {"raw", "probability"}, optional
+        Output space for SHAP values. "raw" returns log-odds (additive),
+        "probability" returns probability space (0-1, easier to interpret).
+        Defaults to "probability".
     background_data : array-like, optional
         Background dataset required for the "kernel" explainer.
     n_background_samples : int, optional
@@ -55,6 +59,7 @@ class ShapExplainer(BaseEstimator):
         self,
         model,
         explainer_type: Literal["tree", "linear", "kernel"] = "tree",
+        model_output: Literal["raw", "probability"] = "probability",
         background_data=None,
         n_background_samples: int = 100,
     ) -> None:
@@ -65,6 +70,7 @@ class ShapExplainer(BaseEstimator):
 
         self.model = model
         self.explainer_type = explainer_type
+        self.model_output = model_output
         self.background_data = background_data
         self.n_background_samples = n_background_samples
         self._is_fitted = False
@@ -97,7 +103,16 @@ class ShapExplainer(BaseEstimator):
             self._X_fit = pd.DataFrame(X, columns=self.feature_names_)
 
         if self.explainer_type == "tree":
-            self.explainer_ = shap.TreeExplainer(self.model)
+            if self.model_output == "probability":
+                # probability output requires interventional perturbation
+                self.explainer_ = shap.TreeExplainer(
+                    self.model,
+                    data=X,
+                    model_output=self.model_output,
+                    feature_perturbation="interventional",
+                )
+            else:
+                self.explainer_ = shap.TreeExplainer(self.model)
         elif self.explainer_type == "linear":
             self.explainer_ = shap.LinearExplainer(self.model, X)
         else:  # kernel
