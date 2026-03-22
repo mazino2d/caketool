@@ -167,34 +167,6 @@ class TestGetLocalExplanation:
 
 
 # ---------------------------------------------------------------------------
-# get_top_drivers
-# ---------------------------------------------------------------------------
-
-
-class TestGetTopDrivers:
-    def test_returns_exactly_n_rows(self, fitted_explainer, dataset):
-        result = fitted_explainer.get_top_drivers(row_index=0, n=5)
-        assert len(result) == 5
-
-    def test_direction_values_valid(self, fitted_explainer, dataset):
-        result = fitted_explainer.get_top_drivers(row_index=0, n=10)
-        assert set(result["direction"]).issubset({"positive", "negative"})
-
-    def test_direction_consistent_with_shap_sign(self, fitted_explainer, dataset):
-        result = fitted_explainer.get_top_drivers(row_index=0, n=10)
-        for _, row in result.iterrows():
-            if row["shap_value"] >= 0:
-                assert row["direction"] == "positive"
-            else:
-                assert row["direction"] == "negative"
-
-    def test_n_greater_than_features_returns_all(self, fitted_explainer, dataset):
-        n_features = len(fitted_explainer.feature_names_)
-        result = fitted_explainer.get_top_drivers(row_index=0, n=n_features + 100)
-        assert len(result) == n_features
-
-
-# ---------------------------------------------------------------------------
 # show_* smoke tests
 # ---------------------------------------------------------------------------
 

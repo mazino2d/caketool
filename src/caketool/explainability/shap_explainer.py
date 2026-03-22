@@ -225,31 +225,6 @@ class ShapExplainer(BaseEstimator):
         df["rank"] = np.arange(1, len(df) + 1)
         return df[["rank", "feature", "importance_pct", "direction", "feature_value", "shap_value"]]
 
-    def get_top_drivers(self, row_index: int = 0, n: int = 10) -> pd.DataFrame:
-        """
-        Return the top-N most influential features for a single sample.
-
-        Parameters
-        ----------
-        row_index : int, optional
-            Index of the sample to explain. Defaults to 0.
-        n : int, optional
-            Number of top features to return. Defaults to 10.
-
-        Returns
-        -------
-        pd.DataFrame
-            Top-N rows from get_local_explanation.
-
-        Raises
-        ------
-        RuntimeError
-            If called before fit.
-        """
-        self._check_fitted()
-        local_df = self.get_local_explanation(row_index=row_index)
-        return local_df.head(n).reset_index(drop=True)
-
     def _get_base_value(self) -> float:
         """Extract base value from explainer for plotting."""
         expected = self.explainer_.expected_value
