@@ -1,0 +1,319 @@
+"""SHAP Permutation-based model explainability for sklearn-compatible models."""
+
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+from sklearn.base import BaseEstimator
+
+from caketool.utils.lib_utils import require_dependencies
+
+from .base import ModelExplainer
+
+_NOT_FITTED_MSG = "PermutationExplainer has not been fitted yet. Call .fit(X) first."
+
+
+class PermutationExplainer(ModelExplainer, BaseEstimator):
+    """SHAP Permutation-based model explainer compatible with any sklearn model.
+
+    Uses ``shap.PermutationExplainer`` under the hood, which is model-agnostic
+    and works by permuting features to estimate SHAP values. No need to extract
+    internals from pipelines — pass the full model directly.
+
+    Parameters
+    ----------
+    model : object
+        Fitted sklearn-compatible model. Must have ``predict_proba`` or
+        ``predict`` method.
+    background_data : array-like, optional
+        Background dataset used as the reference distribution when computing
+        SHAP values. If None, a subsample of the fit data is used.
+    n_background_samples : int, optional
+        Number of samples to draw from background_data (or fit data when
+        background_data is None). Defaults to 100.
+
+    Attributes
+    ----------
+    shap_values_ : np.ndarray of shape (n_samples, n_features)
+        SHAP values computed after calling fit. For binary classification,
+        values correspond to the positive class.
+    feature_names_ : list of str
+        Feature names inferred from the input data (DataFrame columns or
+        auto-generated as f0, f1, ...).
+    explainer_ : shap.PermutationExplainer
+        Fitted SHAP explainer instance.
+
+    Examples
+    --------
+    >>> from sklearn.ensemble import GradientBoostingClassifier
+    >>> from caketool.explainability import PermutationExplainer
+    >>> model = GradientBoostingClassifier().fit(X_train, y_train)
+    >>> explainer = PermutationExplainer(model=model)
+    >>> explainer.fit(X_test)
+    >>> importance = explainer.get_feature_importance()
+    """
+
+    def __init__(
+        self,
+        model,
+        background_data=None,
+        n_background_samples: int = 100,
+    ) -> None:
+        self.model = model
+        self.background_data = background_data
+        self.n_background_samples = n_background_samples
+        self._is_fitted = False
+
+    def _check_fitted(self) -> None:
+        if not self._is_fitted:
+            raise RuntimeError(_NOT_FITTED_MSG)
+
+    def _get_predict_fn(self):
+        """Return predict_proba if available, else predict."""
+        if hasattr(self.model, "predict_proba"):
+            return self.model.predict_proba
+        return self.model.predict
+
+    @require_dependencies("shap")
+    def fit(self, X) -> PermutationExplainer:
+        """Compute SHAP values for the given input data.
+
+        Parameters
+        ----------
+        X : pd.DataFrame or np.ndarray of shape (n_samples, n_features)
+            Input data to explain.
+
+        Returns
+        -------
+        self : PermutationExplainer
+        """
+        import shap
+
+        if isinstance(X, pd.DataFrame):
+            self.feature_names_ = list(X.columns)
+            self._X_fit = X.copy()
+        else:
+            self.feature_names_ = [f"f{i}" for i in range(X.shape[1])]
+            self._X_fit = pd.DataFrame(X, columns=self.feature_names_)
+
+        predict_fn = self._get_predict_fn()
+
+        if self.background_data is not None:
+            n = min(self.n_background_samples, len(self.background_data))
+            bg = shap.sample(self.background_data, n)
+        else:
+            n = min(self.n_background_samples, len(self._X_fit))
+            bg = shap.sample(self._X_fit, n)
+
+        self.explainer_ = shap.PermutationExplainer(predict_fn, bg)
+        explanation = self.explainer_(self._X_fit)
+
+        raw_values = explanation.values
+
+        # Normalise binary classification: take positive-class SHAP values
+        if isinstance(raw_values, list):
+            raw_values = raw_values[1] if len(raw_values) == 2 else raw_values[0]
+        elif isinstance(raw_values, np.ndarray) and raw_values.ndim == 3:
+            raw_values = raw_values[:, :, 1]
+
+        self.shap_values_ = np.array(raw_values)
+
+        # Extract base value from first sample (same for all samples)
+        base = np.array(explanation.base_values)
+        if base.ndim == 2:
+            # (n_samples, n_classes) — binary classification: take positive class
+            self.base_value_ = float(base[0, 1]) if base.shape[1] >= 2 else float(base[0, 0])
+        elif base.ndim == 1:
+            self.base_value_ = float(base[0])
+        else:
+            self.base_value_ = float(base)
+
+        self._is_fitted = True
+        return self
+
+    def get_feature_importance(self) -> pd.DataFrame:
+        """Return global feature importance based on mean absolute SHAP values.
+
+        Returns
+        -------
+        pd.DataFrame
+            Columns: rank, feature, importance_pct, direction, mean_abs_shap.
+
+            - rank: importance ranking (1 = most important)
+            - feature: feature name
+            - importance_pct: normalized importance (0-1 scale, sums to 1)
+            - direction: ``"positive"`` if feature generally increases prediction,
+              ``"negative"`` if it decreases prediction (based on mean SHAP value)
+            - mean_abs_shap: mean absolute SHAP value across all samples
+
+            Sorted by importance descending.
+
+        Raises
+        ------
+        RuntimeError
+            If called before fit.
+        """
+        self._check_fitted()
+        mean_abs = np.abs(self.shap_values_).mean(axis=0)
+        mean_shap = self.shap_values_.mean(axis=0)
+
+        total_importance = mean_abs.sum()
+        importance_pct = mean_abs / total_importance if total_importance > 0 else mean_abs
+
+        df = pd.DataFrame(
+            {
+                "feature": self.feature_names_,
+                "mean_abs_shap": mean_abs,
+                "importance_pct": importance_pct,
+                "direction": ["positive" if v >= 0 else "negative" for v in mean_shap],
+            }
+        )
+        df = df.sort_values("mean_abs_shap", ascending=False).reset_index(drop=True)
+        df["rank"] = np.arange(1, len(df) + 1)
+        return df[["rank", "feature", "importance_pct", "direction", "mean_abs_shap"]]
+
+    def get_local_explanation(self, row_index: int = 0) -> pd.DataFrame:
+        """Return SHAP explanation for a single sample.
+
+        Parameters
+        ----------
+        row_index : int, optional
+            Index of the sample to explain. Defaults to 0.
+
+        Returns
+        -------
+        pd.DataFrame
+            Columns: rank, feature, importance_pct, direction, feature_value, shap_value.
+
+            - rank: importance ranking for this sample (1 = most important)
+            - feature: feature name
+            - importance_pct: normalized importance (0-1 scale, sums to 1)
+            - direction: ``"positive"`` if feature pushes prediction up, else ``"negative"``
+            - feature_value: actual feature value for this sample
+            - shap_value: SHAP value for this sample
+
+            Sorted by importance descending.
+
+        Raises
+        ------
+        IndexError
+            If row_index is out of bounds.
+        RuntimeError
+            If called before fit.
+        """
+        self._check_fitted()
+        n = len(self._X_fit)
+        if row_index < 0 or row_index >= n:
+            raise IndexError(f"row_index {row_index} is out of bounds for input with {n} rows.")
+
+        feature_values = self._X_fit.iloc[row_index].values
+        shap_vals = self.shap_values_[row_index]
+        abs_shap = np.abs(shap_vals)
+
+        total_importance = abs_shap.sum()
+        importance_pct = abs_shap / total_importance if total_importance > 0 else abs_shap
+
+        df = pd.DataFrame(
+            {
+                "feature": self.feature_names_,
+                "feature_value": feature_values,
+                "shap_value": shap_vals,
+                "importance_pct": importance_pct,
+                "direction": ["positive" if v >= 0 else "negative" for v in shap_vals],
+            }
+        )
+        df = df.sort_values("importance_pct", ascending=False).reset_index(drop=True)
+        df["rank"] = np.arange(1, len(df) + 1)
+        return df[["rank", "feature", "importance_pct", "direction", "feature_value", "shap_value"]]
+
+    def _get_base_value(self) -> float:
+        """Return base value stored during fit."""
+        return self.base_value_
+
+    @require_dependencies("shap")
+    def show_summary(self, max_display: int = 20) -> None:
+        """Display a SHAP beeswarm summary plot.
+
+        Each dot represents one sample. Colour encodes the feature value
+        (red = high, blue = low). Position on x-axis shows whether the
+        feature pushed the prediction up (positive SHAP) or down (negative).
+
+        Parameters
+        ----------
+        max_display : int, optional
+            Maximum number of features to display. Defaults to 20.
+
+        Raises
+        ------
+        RuntimeError
+            If called before fit.
+        """
+        self._check_fitted()
+        import shap
+
+        explanation = shap.Explanation(
+            values=self.shap_values_,
+            base_values=self._get_base_value(),
+            data=self._X_fit.values if hasattr(self._X_fit, "values") else self._X_fit,
+            feature_names=self.feature_names_,
+        )
+        shap.plots.beeswarm(explanation, max_display=max_display)
+
+    @require_dependencies("shap")
+    def show_waterfall(self, row_index: int = 0, max_display: int = 15) -> None:
+        """Display a SHAP waterfall plot for a single sample.
+
+        Parameters
+        ----------
+        row_index : int, optional
+            Index of the sample to explain. Defaults to 0.
+        max_display : int, optional
+            Maximum number of features to display. Defaults to 15.
+
+        Raises
+        ------
+        RuntimeError
+            If called before fit.
+        """
+        self._check_fitted()
+        import shap
+
+        row_data = self._X_fit.iloc[row_index].values
+        explanation = shap.Explanation(
+            values=self.shap_values_[row_index],
+            base_values=self._get_base_value(),
+            data=row_data,
+            feature_names=self.feature_names_,
+        )
+        shap.waterfall_plot(explanation, max_display=max_display)
+
+    @require_dependencies("shap")
+    def show_dependence(self, feature: str, interaction_feature: str = "auto") -> None:
+        """Display a SHAP dependence plot for a feature.
+
+        Parameters
+        ----------
+        feature : str
+            Feature name to plot.
+        interaction_feature : str, optional
+            Feature to use for colour encoding. Defaults to ``"auto"``.
+
+        Raises
+        ------
+        ValueError
+            If feature is not in feature_names_.
+        RuntimeError
+            If called before fit.
+        """
+        self._check_fitted()
+        if feature not in self.feature_names_:
+            raise ValueError(f"Feature '{feature}' not found in feature_names_. Available: {self.feature_names_}")
+
+        import shap
+
+        shap.dependence_plot(
+            feature,
+            self.shap_values_,
+            self._X_fit,
+            interaction_index=interaction_feature,
+        )

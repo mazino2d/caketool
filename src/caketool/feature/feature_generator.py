@@ -555,6 +555,8 @@ def _generate_features_by_window_polars(
     """
     from datetime import timedelta
 
+    import polars as pl
+
     if len(numeric_cols) + len(string_cols) + len(date_cols) == 0:
         raise ValueError("At least one of numeric_cols, string_cols or date_cols must be provided")
 
@@ -653,6 +655,22 @@ def _generate_features_by_window_polars(
                     values=value_cols,
                     aggregate_function="first",
                 )
+
+                # Polars pivot names columns as "{value}_{key_value}"; rename to match
+                # pandas convention "{key_value}_{value}" (e.g., "all_amount_lifetime_sum")
+                key_values = stats_df[key_col].unique().to_list()
+                rename_map = {}
+                for col in pivot_df.columns:
+                    if col in (client_id_col, fs_event_timestamp):
+                        continue
+                    for kv in key_values:
+                        suffix = f"_{kv}"
+                        if col.endswith(suffix):
+                            value_part = col[: -len(suffix)]
+                            rename_map[col] = f"{kv}_{value_part}"
+                            break
+                if rename_map:
+                    pivot_df = pivot_df.rename(rename_map)
 
                 key_features.append(pivot_df)
 

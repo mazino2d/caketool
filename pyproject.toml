@@ -15,26 +15,35 @@ classifiers = [
 ]
 keywords = ["cake", "ds", "mlops"]
 dependencies = [
-    "numpy",
-    "pandas",
-    "scikit-learn",
-    "scipy",
-    "tqdm",
-    "xgboost",
-    "category_encoders",
-    "python-dotenv",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scikit-learn>=1.3",
+    "scipy>=1.10",
+    "tqdm>=4.60",
+    "xgboost>=2.0",
+    "category-encoders>=2.6",
+    "python-dotenv>=1.0",
+    "shap>=0.45",
 ]
 requires-python = ">=3.10"
 
 [project.optional-dependencies]
-onprem = ["mlflow"]
-gcp = ["google-cloud-aiplatform", "google-cloud-bigquery"]
-wandb = ["wandb"]
+onprem = ["mlflow>=2.0"]
+gcp = [
+    "google-cloud-aiplatform>=1.50",
+    "google-cloud-bigquery>=3.0",
+    "google-cloud-storage>=2.0",
+    "bigframes>=1.0",
+]
+wandb = ["wandb>=0.17"]
+spark = ["pyspark>=3.3"]
+polars = ["polars>=0.20"]
 all = [
-    "mlflow",
-    "google-cloud-aiplatform",
-    "google-cloud-bigquery",
-    "wandb",
+    "caketool[onprem]",
+    "caketool[gcp]",
+    "caketool[wandb]",
+    "caketool[spark]",
+    "caketool[polars]",
 ]
 dev = [
     "build",
