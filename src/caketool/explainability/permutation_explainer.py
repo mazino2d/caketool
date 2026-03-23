@@ -6,8 +6,9 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator
 
-from caketool.explainability.base import ModelExplainer
 from caketool.utils.lib_utils import require_dependencies
+
+from .base import ModelExplainer
 
 _NOT_FITTED_MSG = "PermutationExplainer has not been fitted yet. Call .fit(X) first."
 
