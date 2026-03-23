@@ -1,38 +1,35 @@
-"""SHAP-based model explainability for sklearn-compatible models."""
+"""SHAP Permutation-based model explainability for sklearn-compatible models."""
 
 from __future__ import annotations
-
-from typing import Literal
 
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator
 
+from caketool.explainability.base import ModelExplainer
 from caketool.utils.lib_utils import require_dependencies
 
-_NOT_FITTED_MSG = "ShapExplainer has not been fitted yet. Call .fit(X) first."
-_VALID_EXPLAINER_TYPES = ("tree", "linear", "kernel")
+_NOT_FITTED_MSG = "PermutationExplainer has not been fitted yet. Call .fit(X) first."
 
 
-class ShapExplainer(BaseEstimator):
-    """
-    SHAP-based model explainer supporting tree, linear, and kernel explainers.
+class PermutationExplainer(ModelExplainer, BaseEstimator):
+    """SHAP Permutation-based model explainer compatible with any sklearn model.
+
+    Uses ``shap.PermutationExplainer`` under the hood, which is model-agnostic
+    and works by permuting features to estimate SHAP values. No need to extract
+    internals from pipelines — pass the full model directly.
 
     Parameters
     ----------
     model : object
-        Fitted sklearn-compatible model.
-    explainer_type : {"tree", "linear", "kernel"}, optional
-        Type of SHAP explainer to use. Defaults to "tree".
-    model_output : {"raw", "probability"}, optional
-        Output space for SHAP values. "raw" returns log-odds (additive),
-        "probability" returns probability space (0-1, easier to interpret).
-        Defaults to "probability".
+        Fitted sklearn-compatible model. Must have ``predict_proba`` or
+        ``predict`` method.
     background_data : array-like, optional
-        Background dataset required for the "kernel" explainer.
+        Background dataset used as the reference distribution when computing
+        SHAP values. If None, a subsample of the fit data is used.
     n_background_samples : int, optional
-        Number of background samples to subsample for the "kernel" explainer.
-        Defaults to 100.
+        Number of samples to draw from background_data (or fit data when
+        background_data is None). Defaults to 100.
 
     Attributes
     ----------
@@ -42,15 +39,15 @@ class ShapExplainer(BaseEstimator):
     feature_names_ : list of str
         Feature names inferred from the input data (DataFrame columns or
         auto-generated as f0, f1, ...).
-    explainer_ : shap.Explainer
+    explainer_ : shap.PermutationExplainer
         Fitted SHAP explainer instance.
 
     Examples
     --------
     >>> from sklearn.ensemble import GradientBoostingClassifier
-    >>> from caketool.explainability import ShapExplainer
+    >>> from caketool.explainability import PermutationExplainer
     >>> model = GradientBoostingClassifier().fit(X_train, y_train)
-    >>> explainer = ShapExplainer(model=model, explainer_type="tree")
+    >>> explainer = PermutationExplainer(model=model)
     >>> explainer.fit(X_test)
     >>> importance = explainer.get_feature_importance()
     """
@@ -58,19 +55,10 @@ class ShapExplainer(BaseEstimator):
     def __init__(
         self,
         model,
-        explainer_type: Literal["tree", "linear", "kernel"] = "tree",
-        model_output: Literal["raw", "probability"] = "probability",
         background_data=None,
         n_background_samples: int = 100,
     ) -> None:
-        if explainer_type not in _VALID_EXPLAINER_TYPES:
-            raise ValueError(f"Invalid explainer_type '{explainer_type}'. Must be one of {_VALID_EXPLAINER_TYPES}.")
-        if explainer_type == "kernel" and background_data is None:
-            raise ValueError("background_data is required for explainer_type='kernel'.")
-
         self.model = model
-        self.explainer_type = explainer_type
-        self.model_output = model_output
         self.background_data = background_data
         self.n_background_samples = n_background_samples
         self._is_fitted = False
@@ -79,10 +67,15 @@ class ShapExplainer(BaseEstimator):
         if not self._is_fitted:
             raise RuntimeError(_NOT_FITTED_MSG)
 
+    def _get_predict_fn(self):
+        """Return predict_proba if available, else predict."""
+        if hasattr(self.model, "predict_proba"):
+            return self.model.predict_proba
+        return self.model.predict
+
     @require_dependencies("shap")
-    def fit(self, X) -> ShapExplainer:
-        """
-        Compute SHAP values for the given input data.
+    def fit(self, X) -> PermutationExplainer:
+        """Compute SHAP values for the given input data.
 
         Parameters
         ----------
@@ -91,7 +84,7 @@ class ShapExplainer(BaseEstimator):
 
         Returns
         -------
-        self : ShapExplainer
+        self : PermutationExplainer
         """
         import shap
 
@@ -102,25 +95,19 @@ class ShapExplainer(BaseEstimator):
             self.feature_names_ = [f"f{i}" for i in range(X.shape[1])]
             self._X_fit = pd.DataFrame(X, columns=self.feature_names_)
 
-        if self.explainer_type == "tree":
-            if self.model_output == "probability":
-                # probability output requires interventional perturbation
-                self.explainer_ = shap.TreeExplainer(
-                    self.model,
-                    data=X,
-                    model_output=self.model_output,
-                    feature_perturbation="interventional",
-                )
-            else:
-                self.explainer_ = shap.TreeExplainer(self.model)
-        elif self.explainer_type == "linear":
-            self.explainer_ = shap.LinearExplainer(self.model, X)
-        else:  # kernel
+        predict_fn = self._get_predict_fn()
+
+        if self.background_data is not None:
             n = min(self.n_background_samples, len(self.background_data))
             bg = shap.sample(self.background_data, n)
-            self.explainer_ = shap.KernelExplainer(self.model.predict_proba, bg)
+        else:
+            n = min(self.n_background_samples, len(self._X_fit))
+            bg = shap.sample(self._X_fit, n)
 
-        raw_values = self.explainer_.shap_values(X)
+        self.explainer_ = shap.PermutationExplainer(predict_fn, bg)
+        explanation = self.explainer_(self._X_fit)
+
+        raw_values = explanation.values
 
         # Normalise binary classification: take positive-class SHAP values
         if isinstance(raw_values, list):
@@ -129,23 +116,35 @@ class ShapExplainer(BaseEstimator):
             raw_values = raw_values[:, :, 1]
 
         self.shap_values_ = np.array(raw_values)
+
+        # Extract base value from first sample (same for all samples)
+        base = np.array(explanation.base_values)
+        if base.ndim == 2:
+            # (n_samples, n_classes) — binary classification: take positive class
+            self.base_value_ = float(base[0, 1]) if base.shape[1] >= 2 else float(base[0, 0])
+        elif base.ndim == 1:
+            self.base_value_ = float(base[0])
+        else:
+            self.base_value_ = float(base)
+
         self._is_fitted = True
         return self
 
     def get_feature_importance(self) -> pd.DataFrame:
-        """
-        Return global feature importance based on mean absolute SHAP values.
+        """Return global feature importance based on mean absolute SHAP values.
 
         Returns
         -------
         pd.DataFrame
             Columns: rank, feature, importance_pct, direction, mean_abs_shap.
+
             - rank: importance ranking (1 = most important)
             - feature: feature name
             - importance_pct: normalized importance (0-1 scale, sums to 1)
-            - direction: "positive" if feature generally increases prediction,
-              "negative" if it decreases prediction (based on mean SHAP value)
+            - direction: ``"positive"`` if feature generally increases prediction,
+              ``"negative"`` if it decreases prediction (based on mean SHAP value)
             - mean_abs_shap: mean absolute SHAP value across all samples
+
             Sorted by importance descending.
 
         Raises
@@ -173,8 +172,7 @@ class ShapExplainer(BaseEstimator):
         return df[["rank", "feature", "importance_pct", "direction", "mean_abs_shap"]]
 
     def get_local_explanation(self, row_index: int = 0) -> pd.DataFrame:
-        """
-        Return SHAP explanation for a single sample.
+        """Return SHAP explanation for a single sample.
 
         Parameters
         ----------
@@ -185,12 +183,14 @@ class ShapExplainer(BaseEstimator):
         -------
         pd.DataFrame
             Columns: rank, feature, importance_pct, direction, feature_value, shap_value.
+
             - rank: importance ranking for this sample (1 = most important)
             - feature: feature name
             - importance_pct: normalized importance (0-1 scale, sums to 1)
-            - direction: "positive" if feature pushes prediction up, else "negative"
+            - direction: ``"positive"`` if feature pushes prediction up, else ``"negative"``
             - feature_value: actual feature value for this sample
             - shap_value: SHAP value for this sample
+
             Sorted by importance descending.
 
         Raises
@@ -226,17 +226,12 @@ class ShapExplainer(BaseEstimator):
         return df[["rank", "feature", "importance_pct", "direction", "feature_value", "shap_value"]]
 
     def _get_base_value(self) -> float:
-        """Extract base value from explainer for plotting."""
-        expected = self.explainer_.expected_value
-        if isinstance(expected, list | np.ndarray):
-            arr = np.array(expected).flatten()
-            return float(arr[1]) if len(arr) >= 2 else float(arr[0])
-        return float(expected)
+        """Return base value stored during fit."""
+        return self.base_value_
 
     @require_dependencies("shap")
     def show_summary(self, max_display: int = 20) -> None:
-        """
-        Display a SHAP beeswarm summary plot.
+        """Display a SHAP beeswarm summary plot.
 
         Each dot represents one sample. Colour encodes the feature value
         (red = high, blue = low). Position on x-axis shows whether the
@@ -265,8 +260,7 @@ class ShapExplainer(BaseEstimator):
 
     @require_dependencies("shap")
     def show_waterfall(self, row_index: int = 0, max_display: int = 15) -> None:
-        """
-        Display a SHAP waterfall plot for a single sample.
+        """Display a SHAP waterfall plot for a single sample.
 
         Parameters
         ----------
@@ -284,7 +278,6 @@ class ShapExplainer(BaseEstimator):
         import shap
 
         row_data = self._X_fit.iloc[row_index].values
-
         explanation = shap.Explanation(
             values=self.shap_values_[row_index],
             base_values=self._get_base_value(),
@@ -295,15 +288,14 @@ class ShapExplainer(BaseEstimator):
 
     @require_dependencies("shap")
     def show_dependence(self, feature: str, interaction_feature: str = "auto") -> None:
-        """
-        Display a SHAP dependence plot for a feature.
+        """Display a SHAP dependence plot for a feature.
 
         Parameters
         ----------
         feature : str
             Feature name to plot.
         interaction_feature : str, optional
-            Feature to use for colour encoding. Defaults to "auto".
+            Feature to use for colour encoding. Defaults to ``"auto"``.
 
         Raises
         ------
