@@ -4,6 +4,7 @@
         "**/dist": true,
         "**/*.egg-info": true,
         "**/_version.py": true,
+        "**/build": true,
     },
     "autopep8.args": [
         "--max-line-length", "300"
