@@ -14,8 +14,8 @@ Quick start
 >>> eda.correlation_heatmap(df)
 >>>
 >>> # Univariate
->>> eda.histogram(df["age"])
->>> eda.value_counts(df["category"])
+>>> eda.plot_distribution(df["age"])
+>>> eda.plot_frequency(df["category"])
 >>>
 >>> # Bivariate
 >>> eda.scatter(df, x="income", y="spend", color_by="segment")
@@ -72,26 +72,20 @@ from .quality import (
 
 # Univariate
 from .univariate import (
-    bar_count,
-    distribution,
-    histogram,
-    overlay_histogram,
-    percentile_table,
-    pie_chart,
-    value_counts,
+    compute_frequency,
+    compute_quantile,
+    plot_distribution,
+    plot_frequency,
 )
 
 __all__ = [
     # config
     "EDAConfig",
     # univariate
-    "histogram",
-    "overlay_histogram",
-    "distribution",
-    "pie_chart",
-    "bar_count",
-    "percentile_table",
-    "value_counts",
+    "plot_distribution",
+    "plot_frequency",
+    "compute_quantile",
+    "compute_frequency",
     # bivariate
     "scatter",
     "line_with_ma",
