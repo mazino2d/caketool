@@ -65,6 +65,7 @@ def plot_scatter(
     y: str,
     color_by: str | None = None,
     sample_n: int | None = 5000,
+    random_state: int | None = 42,
     cfg: EDAConfig | None = None,
 ) -> go.Figure:
     """Scatter plot of two numeric columns with OLS trend line and correlation annotation.
@@ -84,6 +85,9 @@ def plot_scatter(
         Column name for color grouping (creates multiple traces).
     sample_n : int, optional
         Randomly sample this many rows to avoid overplotting. None = all rows. Default: 5000.
+    random_state : int, optional
+        Random state passed to pandas sampling. Ignored when ``sample_n`` is None.
+        Set to None for non-deterministic sampling. Default: 42.
     cfg : EDAConfig, optional
         Visualization config.
 
@@ -104,7 +108,7 @@ def plot_scatter(
 
     data = df[[x, y] + ([color_by] if color_by else [])].dropna()
     if sample_n and len(data) > sample_n:
-        data = data.sample(n=sample_n, random_state=42)
+        data = data.sample(n=sample_n, random_state=random_state)
 
     # Always calculate and display correlation
     corr_text = ""
@@ -208,8 +212,6 @@ def plot_distribution_by_group(
         Lower quantile clip for histogram mode. Default: 0.0.
     high_trim : float, optional
         Upper quantile clip for histogram mode. Default: 1.0.
-    show_stats : bool, optional
-        If True, annotate with n, mean, std for each group. Default: True.
     cfg : EDAConfig, optional
         Visualization config.
 
@@ -225,6 +227,9 @@ def plot_distribution_by_group(
     """
     require_columns(df, [cat_col, num_col])
     require_numeric(df[num_col])
+    allowed_modes = {"box", "violin", "hist"}
+    if mode not in allowed_modes:
+        raise ValueError(f"mode must be one of {sorted(allowed_modes)}, got {mode!r}")
     c = _cfg(cfg)
 
     data = df[[cat_col, num_col]].dropna()
@@ -442,9 +447,14 @@ def plot_time_series(
     y_cols = y if isinstance(y, list) else [y]
 
     require_columns(df, [x] + y_cols + ([group_by] if group_by else []))
-    require_numeric(df[x])
     for y_col in y_cols:
         require_numeric(df[y_col])
+    if not isinstance(ma, int) or isinstance(ma, bool) or ma < 0:
+        raise ValueError("ma must be a non-negative integer")
+    if band not in (None, "std", "minmax"):
+        raise ValueError("band must be one of None, 'std', or 'minmax'")
+    if band is not None and group_by is None:
+        raise ValueError("band is only supported when group_by is provided")
 
     # Sort by x
     data = df[[x] + y_cols + ([group_by] if group_by else [])].dropna().sort_values(x)
@@ -521,6 +531,32 @@ def plot_time_series(
                             hoverinfo="skip",
                         )
                     )
+                elif band == "minmax":
+                    y_min = sub[y_col].rolling(ma or 30, min_periods=1).min()
+                    y_max = sub[y_col].rolling(ma or 30, min_periods=1).max()
+                    fig.add_trace(
+                        go.Scatter(
+                            x=sub[x],
+                            y=y_max,
+                            mode="lines",
+                            line={"width": 0},
+                            showlegend=False,
+                            hoverinfo="skip",
+                        )
+                    )
+                    fig.add_trace(
+                        go.Scatter(
+                            x=sub[x],
+                            y=y_min,
+                            mode="lines",
+                            line={"width": 0},
+                            fillcolor=color,
+                            fill="tonexty",
+                            name=f"{trace_name} min-max",
+                            showlegend=False,
+                            hoverinfo="skip",
+                        )
+                    )
     else:
         for y_idx, y_col in enumerate(y_cols):
             color = c.color_palette[y_idx % len(c.color_palette)]
@@ -590,7 +626,7 @@ def rank_associations(
     cat_cols : list[str], optional
         Categorical columns to test. If None, auto-detected via unique_threshold.
     num_method : str, optional
-        Correlation method for numeric: "pearson", "spearman", "kendall". Default: "pearson".
+        Correlation method for numeric: "pearson" or "spearman". Default: "pearson".
     unique_threshold : int, optional
         Max unique values to consider column categorical when auto-detecting. Default: 50.
 
@@ -606,6 +642,8 @@ def rank_associations(
     >>> ranking.head()
     """
     require_column(df, target)
+    if num_method not in ("pearson", "spearman"):
+        raise ValueError("num_method must be 'pearson' or 'spearman'")
 
     # Auto-detect columns if not provided
     if num_cols is None:
@@ -616,15 +654,15 @@ def rank_associations(
     results = []
 
     # Numeric associations
-    if pd.api.types.is_numeric_dtype(df[target]):
+    target_is_numeric = pd.api.types.is_numeric_dtype(df[target])
+    if target_is_numeric:
         target_numeric = df[target]
         for col in num_cols:
             mask = target_numeric.notna() & df[col].notna()
             if mask.sum() < 2:
                 continue
 
-            _method = num_method if num_method in ("pearson", "spearman") else "spearman"
-            assoc, p_val = association(target_numeric[mask], df[col][mask], method=_method)
+            assoc, p_val = association(target_numeric[mask], df[col][mask], method=num_method)
 
             results.append(
                 {
@@ -634,16 +672,31 @@ def rank_associations(
                     "method": num_method,
                 }
             )
+    else:
+        for col in num_cols:
+            mask = df[target].notna() & df[col].notna()
+            if mask.sum() < 2:
+                continue
+
+            eta_val, p_val = association(df[target][mask], df[col][mask], method="eta")
+            results.append(
+                {
+                    "feature": col,
+                    "association": round(eta_val, 4),
+                    "p_value": round(p_val, 4),
+                    "method": "eta",
+                }
+            )
 
     # Categorical associations
     for col in cat_cols:
-        s1 = df[col].astype(str)
-        s2 = df[target].astype(str)
+        s1 = df[col]
+        s2 = df[target]
         mask = s1.notna() & s2.notna()
         if mask.sum() < 2:
             continue
 
-        cramers_v_val, p_val = association(s1[mask], s2[mask], method="cramers_v")
+        cramers_v_val, p_val = association(s1[mask].astype(str), s2[mask].astype(str), method="cramers_v")
 
         results.append(
             {

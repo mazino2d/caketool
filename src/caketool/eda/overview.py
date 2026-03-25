@@ -105,6 +105,7 @@ def profile(df: pd.DataFrame) -> pd.DataFrame:
 def calculate_all_correlations(
     df: pd.DataFrame,
     num_method: Literal["pearson", "spearman"] = "pearson",
+    unique_threshold: int = 50,
 ) -> pd.DataFrame:
     """Compute pairwise association between all column pairs in a DataFrame.
 
@@ -132,7 +133,9 @@ def calculate_all_correlations(
     """
     cols = df.columns.tolist()
     n = len(cols)
-    is_num = {col: pd.api.types.is_numeric_dtype(df[col]) for col in cols}
+    is_num = {
+        col: pd.api.types.is_numeric_dtype(df[col]) and df[col].nunique(dropna=True) > unique_threshold for col in cols
+    }
 
     mat = np.eye(n)
     for i, c1 in enumerate(cols):
@@ -192,7 +195,7 @@ def correlation_heatmap(
     from scipy.cluster.hierarchy import leaves_list, linkage
 
     c = _cfg(cfg)
-    corr = calculate_all_correlations(df, num_method)
+    corr = calculate_all_correlations(df, num_method, unique_threshold=unique_threshold)
     if corr.shape[1] < 2:
         raise ValueError("Need at least 2 columns to compute associations.")
     if cluster:
@@ -253,8 +256,19 @@ def pivot_count(
     -------
     pd.DataFrame
     """
-    require_columns(df, [index, columns])
-    return pd.crosstab(df[index], df[columns], margins=margins, margins_name="Total")
+    require_columns(df, [index, columns] + ([values] if values else []))
+    if values is None:
+        return pd.crosstab(df[index], df[columns], margins=margins, margins_name="Total")
+
+    result = pd.crosstab(
+        df[index],
+        df[columns],
+        values=df[values],
+        aggfunc="count",
+        margins=margins,
+        margins_name="Total",
+    )
+    return result.fillna(0).astype(int)
 
 
 def pivot_rate(

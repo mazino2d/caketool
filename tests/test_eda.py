@@ -41,6 +41,7 @@ from src.caketool.eda.univariate import (
     summarize_categorical_series,
     summarize_numeric_series,
 )
+from src.caketool.metric.association_metric import association
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -494,6 +495,17 @@ class TestPlotScatter:
         fig = plot_scatter(simple_df, "x", "y", color_by="cat")
         assert len(fig.data) > 1
 
+    def test_sampling_respects_random_state(self):
+        df = pd.DataFrame(
+            {
+                "x": np.arange(2000, dtype=float),
+                "y": np.arange(2000, dtype=float) * 2,
+            }
+        )
+        fig1 = plot_scatter(df, "x", "y", sample_n=150, random_state=7)
+        fig2 = plot_scatter(df, "x", "y", sample_n=150, random_state=7)
+        np.testing.assert_array_equal(np.asarray(fig1.data[0].x), np.asarray(fig2.data[0].x))
+
 
 class TestPlotDistributionByGroup:
     def test_box_mode(self, simple_df):
@@ -514,6 +526,10 @@ class TestPlotDistributionByGroup:
     def test_top_k_limits_categories(self, simple_df):
         fig = plot_distribution_by_group(simple_df, "cat", "x", mode="box", top_k=2)
         assert len(fig.data) <= 2
+
+    def test_invalid_mode_raises(self, simple_df):
+        with pytest.raises(ValueError, match="mode must be one of"):
+            plot_distribution_by_group(simple_df, "cat", "x", mode="invalid")
 
 
 class TestPlotCategoryHeatmap:
@@ -550,6 +566,29 @@ class TestPlotTimeSeries:
         fig = plot_time_series(simple_df, x="x", y="y", group_by="cat")
         assert isinstance(fig, go.Figure)
 
+    def test_accepts_datetime_x(self):
+        df = pd.DataFrame(
+            {
+                "ds": pd.date_range("2025-01-01", periods=20, freq="D"),
+                "y": np.linspace(0.0, 1.0, 20),
+            }
+        )
+        fig = plot_time_series(df, x="ds", y="y")
+        assert isinstance(fig, go.Figure)
+
+    def test_minmax_band_supported(self, simple_df):
+        fig = plot_time_series(simple_df, x="x", y="y", group_by="cat", band="minmax")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= simple_df["cat"].nunique() * 3
+
+    def test_band_without_group_by_raises(self, simple_df):
+        with pytest.raises(ValueError, match="group_by"):
+            plot_time_series(simple_df, x="x", y="y", band="std")
+
+    def test_invalid_band_raises(self, simple_df):
+        with pytest.raises(ValueError, match="band must be one of"):
+            plot_time_series(simple_df, x="x", y="y", group_by="cat", band="invalid")
+
 
 class TestRankAssociations:
     def test_returns_dataframe(self, simple_df):
@@ -572,6 +611,32 @@ class TestRankAssociations:
         methods = result["method"].unique()
         # Should have both correlation and cramers_v
         assert "pearson" in methods or "cramers_v" in methods
+
+    def test_invalid_num_method_raises(self, simple_df):
+        with pytest.raises(ValueError, match="num_method"):
+            rank_associations(simple_df, target="label", num_method="kendall")
+
+    def test_categorical_target_uses_eta_for_numeric_features(self, simple_df):
+        result = rank_associations(simple_df, target="cat")
+        numeric_rows = result[result["feature"].isin(["x", "y", "z", "label"])]
+        assert (numeric_rows["method"] == "eta").all()
+
+    def test_categorical_missing_excluded_before_cramers_v(self):
+        df = pd.DataFrame(
+            {
+                "target": ["T1", "T1", "T2", None, "T2"],
+                "cat_feature": ["A", None, "A", "B", "B"],
+            }
+        )
+        result = rank_associations(df, target="target", num_cols=[], cat_cols=["cat_feature"])
+        mask = df["target"].notna() & df["cat_feature"].notna()
+        expected_v, expected_p = association(
+            df.loc[mask, "cat_feature"].astype(str),
+            df.loc[mask, "target"].astype(str),
+            method="cramers_v",
+        )
+        assert result.loc[0, "association"] == pytest.approx(round(expected_v, 4))
+        assert result.loc[0, "p_value"] == pytest.approx(round(expected_p, 4))
 
 
 class TestPlotRocCurve:
@@ -655,6 +720,17 @@ class TestCalculateAllCorrelations:
         assert result.values.min() >= 0.0
         assert result.values.max() <= 1.0
 
+    def test_unique_threshold_changes_low_cardinality_numeric_handling(self, simple_df):
+        df = pd.DataFrame(
+            {
+                "x": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0],
+                "label": [0, 1, 2, 0, 1, 2],
+            }
+        )
+        corr_low_threshold = calculate_all_correlations(df, unique_threshold=1)
+        corr_high_threshold = calculate_all_correlations(df, unique_threshold=100)
+        assert corr_low_threshold.loc["x", "label"] != corr_high_threshold.loc["x", "label"]
+
 
 class TestPivotCount:
     def test_returns_dataframe(self, simple_df):
@@ -668,6 +744,18 @@ class TestPivotCount:
     def test_missing_column_raises(self, simple_df):
         with pytest.raises(ValueError):
             pivot_count(simple_df, index="cat", columns="nonexistent")
+
+    def test_values_parameter_counts_non_null_values(self):
+        df = pd.DataFrame(
+            {
+                "grp": ["A", "A", "B", "B"],
+                "bucket": [1, 1, 1, 1],
+                "val": [10.0, np.nan, 20.0, 30.0],
+            }
+        )
+        result = pivot_count(df, index="grp", columns="bucket", values="val", margins=False)
+        assert int(result.loc["A", 1]) == 1
+        assert int(result.loc["B", 1]) == 2
 
 
 class TestPivotRate:
