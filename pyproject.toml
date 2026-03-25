@@ -47,6 +47,9 @@ all = [
     "caketool[spark]",
     "caketool[polars]",
 ]
+docs = [
+    "pdoc>=14.0",
+]
 dev = [
     "build",
     "twine",
@@ -61,7 +64,8 @@ dev = [
 caketool = "caketool.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/cake-digital-bank"
+Homepage = "https://mazino2d.github.io/caketool"
+Repository = "https://github.com/mazino2d/caketool"
 
 [tool.setuptools_scm]
 write_to = "src/caketool/_version.py"

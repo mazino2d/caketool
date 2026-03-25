@@ -1,7 +1,7 @@
 # Caketool
 
 A Python MLOps toolkit for common machine learning and data science workflows.
-Provides feature engineering, model training, experiment tracking, model monitoring, calibration, and metrics — all designed for production credit-risk and ML pipelines.
+Provides EDA, feature engineering, model training, explainability, experiment tracking, model monitoring, calibration, and metrics — all designed for production-ready ML pipelines.
 
 ---
 
@@ -24,6 +24,24 @@ pip install "caketool[all]"
 ---
 
 ## Quick Start
+
+### EDA
+
+```python
+from caketool import eda
+
+# Dataset overview
+eda.profile(df)
+eda.plot_correlations(df)
+
+# Univariate
+eda.plot_numeric_distribution(df["age"])
+eda.plot_categorical_frequency(df["category"])
+
+# Bivariate
+eda.plot_scatter(df, x="income", y="spend", color_by="segment")
+eda.plot_distribution_by_group(df, cat_col="segment", num_col="income", mode="box")
+```
 
 ### Feature Generation
 
@@ -62,6 +80,26 @@ from caketool.model import BoostTree, EnsembleBoostTree
 models, oof_preds, oof_labels = BoostTree.fit_oof(X_train, y_train, n_splits=5)
 ensemble = EnsembleBoostTree(models)
 proba = ensemble.predict_proba(X_test)[:, 1]
+```
+
+### Explainability
+
+```python
+from caketool.explainability import PermutationExplainer
+
+explainer = PermutationExplainer(model=model)
+explainer.fit(X_test)
+
+# Global feature importance
+importance = explainer.get_feature_importance()
+
+# Local explanation for a single sample
+local = explainer.get_local_explanation(row_index=0)
+
+# Visualize
+explainer.show_summary()
+explainer.show_waterfall(row_index=0)
+explainer.show_dependence(feature="income")
 ```
 
 ### Score Calibration
@@ -123,9 +161,11 @@ with create_tracker("vertex_ai", experiment_name="my-exp", run_name="run-001",
 
 | Module | Key exports | Description |
 | ------ | ----------- | ----------- |
+| `caketool.eda` | `profile`, `plot_correlations`, `plot_scatter`, `plot_distribution_by_group`, `rank_associations` | Exploratory data analysis with Plotly |
 | `caketool.feature` | `generate_features_by_window` | Multi-backend aggregated feature engineering |
 | `caketool.model` | `BoostTree`, `EnsembleBoostTree`, `VotingModel` | XGBoost training & ensemble |
 | `caketool.model` | `FeatureEncoder`, `FeatureRemover`, `ColinearFeatureRemover`, `UnivariateFeatureRemover`, `InfinityHandler` | sklearn-compatible preprocessing transformers |
+| `caketool.explainability` | `PermutationExplainer` | SHAP-based model-agnostic explainability |
 | `caketool.calibration` | `calibrate_score_to_normal` | Normal distribution score calibration |
 | `caketool.metric` | `gini`, `psi`, `psi_from_distribution` | Classification and stability metrics |
 | `caketool.report` | `decribe_risk_score` | Risk score band report |
@@ -159,6 +199,15 @@ pre-commit run --all-files     # Run all hooks
 ```bash
 pytest tests/ -v --tb=short
 ```
+
+### Docs
+
+```bash
+pip install -e ".[docs]"
+pdoc src/caketool   # Preview at http://localhost:8080
+```
+
+Docs are published automatically to [GitHub Pages](https://mazino2d.github.io/caketool) when a version tag is pushed.
 
 ---
 
