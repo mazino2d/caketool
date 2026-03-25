@@ -39,8 +39,8 @@ from .config import EDAConfig
 
 # Overview
 from .overview import (
+    calculate_all_correlations,
     correlation_heatmap,
-    cramers_v_heatmap,
     pivot_count,
     pivot_rate,
     profile,
@@ -91,8 +91,8 @@ __all__ = [
     "psi_report",
     # overview
     "profile",
+    "calculate_all_correlations",
     "correlation_heatmap",
-    "cramers_v_heatmap",
     "pivot_count",
     "pivot_rate",
     "top_extreme_values",

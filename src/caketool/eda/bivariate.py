@@ -5,8 +5,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from scipy.stats import chi2_contingency, f_oneway, linregress, pearsonr, spearmanr
+from scipy.stats import linregress
 
+from ..metric.association_metric import association
 from ._validators import (
     clip_quantiles,
     require_column,
@@ -26,38 +27,35 @@ def _cfg(cfg: EDAConfig | None) -> EDAConfig:
 # ---------------------------------------------------------------------------
 
 
-def _interpret_correlation(r: float, p_val: float) -> str:
-    """Interpret correlation strength and significance.
+def _interpret_association(value: float, p_val: float) -> str:
+    """Interpret association strength and significance.
+
+    Works for all metrics: Pearson r, Spearman ρ, eta η, Cramér's V.
 
     Parameters
     ----------
-    r : float
-        Pearson correlation coefficient
+    value : float
+        Association value (absolute value used for strength classification).
     p_val : float
-        P-value from correlation test
+        P-value from the association test.
 
     Returns
     -------
     str
-        Interpretation text
+        Interpretation text, e.g. "moderate, significant".
     """
-    abs_r = abs(r)
-
-    # Strength
-    if abs_r < 0.1:
+    abs_v = abs(value)
+    if abs_v < 0.1:
         strength = "negligible"
-    elif abs_r < 0.3:
+    elif abs_v < 0.3:
         strength = "weak"
-    elif abs_r < 0.5:
+    elif abs_v < 0.5:
         strength = "moderate"
-    elif abs_r < 0.7:
+    elif abs_v < 0.7:
         strength = "strong"
     else:
         strength = "very strong"
-
-    # Significance
     sig = "significant" if p_val < 0.05 else "NOT significant"
-
     return f"{strength}, {sig}"
 
 
@@ -111,9 +109,9 @@ def plot_scatter(
     # Always calculate and display correlation
     corr_text = ""
     if len(data) > 2:
-        r, p_val = pearsonr(data[x], data[y])
+        r, p_val = association(data[x], data[y], method="pearson")
         p_str = "p<0.001" if p_val < 0.001 else f"p={p_val:.3f}"
-        interp_text = _interpret_correlation(r, p_val)
+        interp_text = _interpret_association(r, p_val)
         corr_text = f" | r={r:.3f} ({p_str}) | {interp_text}"
 
     fig = go.Figure()
@@ -178,65 +176,6 @@ def plot_scatter(
 # ---------------------------------------------------------------------------
 
 
-def _calculate_eta(cat_series: pd.Series, num_series: pd.Series) -> tuple[float, str, float]:
-    """Calculate eta coefficient (correlation ratio) for categorical-numeric association.
-
-    Eta ranges from 0 to 1, measuring how much of the numeric variance
-    is explained by the categorical grouping. Also computes ANOVA p-value.
-
-    Parameters
-    ----------
-    cat_series : pd.Series
-        Categorical variable
-    num_series : pd.Series
-        Numeric variable
-
-    Returns
-    -------
-    tuple[float, str, float]
-        (eta_value, interpretation_text, p_value)
-    """
-    # Grand mean
-    grand_mean = num_series.mean()
-
-    # Between-group sum of squares
-    ss_between = 0
-    for cat in cat_series.unique():
-        group = num_series[cat_series == cat]
-        group_mean = group.mean()
-        ss_between += len(group) * (group_mean - grand_mean) ** 2
-
-    # Total sum of squares
-    ss_total = ((num_series - grand_mean) ** 2).sum()
-
-    # Eta coefficient
-    if ss_total == 0:
-        eta = 0.0
-    else:
-        eta = float(np.sqrt(ss_between / ss_total))
-
-    # Interpretation
-    if eta < 0.1:
-        strength = "negligible"
-    elif eta < 0.3:
-        strength = "weak"
-    elif eta < 0.5:
-        strength = "moderate"
-    elif eta < 0.7:
-        strength = "strong"
-    else:
-        strength = "very strong"
-
-    # Calculate ANOVA p-value
-    groups = [num_series[cat_series == cat].values for cat in cat_series.unique()]
-    if len(groups) > 1:
-        _, p_val = f_oneway(*groups)
-    else:
-        p_val = 1.0
-
-    return eta, strength, p_val
-
-
 def plot_distribution_by_group(
     df: pd.DataFrame,
     cat_col: str,
@@ -293,10 +232,9 @@ def plot_distribution_by_group(
     data = data[data[cat_col].isin(cats)]
 
     # Calculate eta coefficient (explains how much numeric variance is explained by categories)
-    eta, eta_strength, p_val = _calculate_eta(data[cat_col], data[num_col])
+    eta, p_val = association(data[cat_col], data[num_col], method="eta")
     p_str = "p<0.001" if p_val < 0.001 else f"p={p_val:.3f}"
-    sig = "significant" if p_val < 0.05 else "NOT significant"
-    title_base = f"{num_col} by {cat_col} | η={eta:.3f} ({p_str}) | {eta_strength}, {sig}"
+    title_base = f"{num_col} by {cat_col} | η={eta:.3f} ({p_str}) | {_interpret_association(eta, p_val)}"
 
     fig = go.Figure()
 
@@ -371,39 +309,6 @@ def plot_distribution_by_group(
 # ---------------------------------------------------------------------------
 
 
-def _interpret_cramers_v(v: float, p_val: float) -> str:
-    """Interpret Cramér's V strength and significance.
-
-    Parameters
-    ----------
-    v : float
-        Cramér's V coefficient (0 to 1)
-    p_val : float
-        P-value from chi-square test
-
-    Returns
-    -------
-    str
-        Interpretation text: "strength, significance"
-    """
-    # Strength
-    if v < 0.1:
-        strength = "negligible"
-    elif v < 0.3:
-        strength = "weak"
-    elif v < 0.5:
-        strength = "moderate"
-    elif v < 0.7:
-        strength = "strong"
-    else:
-        strength = "very strong"
-
-    # Significance
-    sig = "significant" if p_val < 0.05 else "NOT significant"
-
-    return f"{strength}, {sig}"
-
-
 def plot_category_heatmap(
     df: pd.DataFrame,
     col1: str,
@@ -454,11 +359,8 @@ def plot_category_heatmap(
     ct = pd.crosstab(data[col1], data[col2], normalize="index" if normalize else False)
 
     # Compute Cramér's V
-    chi2, p_val, _, _ = chi2_contingency(pd.crosstab(data[col1], data[col2]))
-    n = len(data)
-    k = min(ct.shape) - 1
-    cramers_v = np.sqrt(chi2 / (n * k)) if (n > 0 and k > 0) else 0.0
-    v_interp = _interpret_cramers_v(cramers_v, p_val)
+    cramers_v_val, p_val = association(data[col1], data[col2], method="cramers_v")
+    v_interp = _interpret_association(cramers_v_val, p_val)
     p_str = "p<0.001" if p_val < 0.001 else f"p={p_val:.3f}"
 
     fig = go.Figure(
@@ -476,7 +378,7 @@ def plot_category_heatmap(
         )
     )
 
-    title = f"{col1} vs {col2} | V={cramers_v:.3f} ({p_str}) | {v_interp}"
+    title = f"{col1} vs {col2} | V={cramers_v_val:.3f} ({p_str}) | {v_interp}"
     fig.update_layout(
         title=title,
         xaxis_title=col2,
@@ -552,9 +454,9 @@ def plot_time_series(
     if len(data) > 2:
         x_numeric = np.arange(len(data))  # 0, 1, 2, ...
         y_vals = data[y_cols[0]].values
-        r, p_val = pearsonr(x_numeric, y_vals)
+        r, p_val = association(x_numeric, y_vals, method="pearson")
         p_str = "p<0.001" if p_val < 0.001 else f"p={p_val:.3f}"
-        interp_text = _interpret_correlation(r, p_val)
+        interp_text = _interpret_association(r, p_val)
         corr_text = f" | r={r:.3f} ({p_str}) | {interp_text}"
 
     fig = go.Figure()
@@ -721,12 +623,8 @@ def rank_associations(
             if mask.sum() < 2:
                 continue
 
-            if num_method == "pearson":
-                assoc, p_val = pearsonr(target_numeric[mask], df[col][mask])
-            elif num_method == "spearman":
-                assoc, p_val = spearmanr(target_numeric[mask], df[col][mask])
-            else:
-                assoc, p_val = spearmanr(target_numeric[mask], df[col][mask])
+            _method = num_method if num_method in ("pearson", "spearman") else "spearman"
+            assoc, p_val = association(target_numeric[mask], df[col][mask], method=_method)
 
             results.append(
                 {
@@ -745,15 +643,7 @@ def rank_associations(
         if mask.sum() < 2:
             continue
 
-        # Cramér's V
-        ct = pd.crosstab(s1[mask], s2[mask])
-        chi2, p_val, _, _ = chi2_contingency(ct)
-        n = ct.sum().sum()
-        k = min(ct.shape) - 1
-        if n > 0 and k > 0:
-            cramers_v_val = np.sqrt(chi2 / (n * k))
-        else:
-            cramers_v_val = 0.0
+        cramers_v_val, p_val = association(s1[mask], s2[mask], method="cramers_v")
 
         results.append(
             {

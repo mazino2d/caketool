@@ -25,14 +25,11 @@ from src.caketool.eda.bivariate import (
     plot_scatter,
     plot_time_series,
     rank_associations,
-    roc_curve_plot,
-    scatter,
-    violin_by_category,
 )
 from src.caketool.eda.config import EDAConfig
 from src.caketool.eda.overview import (
+    calculate_all_correlations,
     correlation_heatmap,
-    cramers_v_heatmap,
     pivot_count,
     pivot_rate,
     profile,
@@ -439,44 +436,44 @@ class TestPlotFrequency:
 
 class TestScatter:
     def test_returns_figure(self, simple_df):
-        fig = scatter(simple_df, "x", "y")
+        fig = plot_scatter(simple_df, "x", "y")
         assert isinstance(fig, go.Figure)
 
     def test_missing_column_raises(self, simple_df):
         with pytest.raises(ValueError):
-            scatter(simple_df, "x", "nonexistent")
+            plot_scatter(simple_df, "x", "nonexistent")
 
     def test_color_by_creates_multiple_traces(self, simple_df):
-        fig = scatter(simple_df, "x", "y", color_by="cat")
+        fig = plot_scatter(simple_df, "x", "y", color_by="cat")
         assert len(fig.data) > 1
 
     def test_title_contains_columns(self, simple_df):
-        fig = scatter(simple_df, "x", "y")
+        fig = plot_scatter(simple_df, "x", "y")
         assert "x" in fig.layout.title.text and "y" in fig.layout.title.text
 
 
 class TestViolinByCategory:
     def test_returns_figure(self, simple_df):
-        fig = violin_by_category(simple_df, "cat", "x")
+        fig = plot_distribution_by_group(simple_df, "cat", "x", mode="violin")
         assert isinstance(fig, go.Figure)
 
     def test_trace_count_matches_categories(self, simple_df):
-        fig = violin_by_category(simple_df, "cat", "x")
+        fig = plot_distribution_by_group(simple_df, "cat", "x", mode="violin")
         n_cats = simple_df["cat"].nunique()
         assert len(fig.data) == n_cats
 
 
 class TestRocCurvePlot:
     def test_returns_figure(self, simple_df):
-        fig = roc_curve_plot(simple_df, "label", "x")
+        fig = plot_roc_curve(simple_df, "label", "x")
         assert isinstance(fig, go.Figure)
 
     def test_has_two_traces(self, simple_df):
-        fig = roc_curve_plot(simple_df, "label", "x")
+        fig = plot_roc_curve(simple_df, "label", "x")
         assert len(fig.data) == 2  # ROC + random line
 
     def test_title_contains_auc(self, simple_df):
-        fig = roc_curve_plot(simple_df, "label", "x")
+        fig = plot_roc_curve(simple_df, "label", "x")
         assert "AUC" in fig.layout.title.text
 
 
@@ -634,24 +631,37 @@ class TestCorrelationHeatmap:
         fig = correlation_heatmap(simple_df)
         assert isinstance(fig, go.Figure)
 
-    def test_fewer_than_two_numeric_raises(self):
-        df = pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
-        with pytest.raises(ValueError, match="2 numeric"):
+    def test_fewer_than_two_columns_raises(self):
+        df = pd.DataFrame({"a": [1, 2, 3]})
+        with pytest.raises(ValueError, match="2 columns"):
             correlation_heatmap(df)
 
     def test_spearman_method(self, simple_df):
-        fig = correlation_heatmap(simple_df, method="spearman")
+        fig = correlation_heatmap(simple_df, num_method="spearman")
         assert "spearman" in fig.layout.title.text.lower()
 
 
-class TestCramersVHeatmap:
-    def test_returns_figure(self, simple_df):
-        fig = cramers_v_heatmap(simple_df, cat_cols=["cat", "label"])
-        assert isinstance(fig, go.Figure)
+class TestCalculateAllCorrelations:
+    def test_returns_dataframe(self, simple_df):
+        result = calculate_all_correlations(simple_df)
+        assert isinstance(result, pd.DataFrame)
 
-    def test_fewer_than_two_columns_raises(self, simple_df):
-        with pytest.raises(ValueError, match="2 categorical"):
-            cramers_v_heatmap(simple_df, cat_cols=["cat"])
+    def test_square_matrix(self, simple_df):
+        result = calculate_all_correlations(simple_df)
+        assert result.shape[0] == result.shape[1] == len(simple_df.columns)
+
+    def test_diagonal_is_one(self, simple_df):
+        result = calculate_all_correlations(simple_df)
+        assert all(result.loc[c, c] == pytest.approx(1.0) for c in result.columns)
+
+    def test_symmetric(self, simple_df):
+        result = calculate_all_correlations(simple_df)
+        pd.testing.assert_frame_equal(result, result.T)
+
+    def test_values_in_range(self, simple_df):
+        result = calculate_all_correlations(simple_df)
+        assert result.values.min() >= 0.0
+        assert result.values.max() <= 1.0
 
 
 class TestPivotCount:
@@ -858,7 +868,6 @@ class TestPsiReport:
 from src.caketool.eda import (  # noqa: E402, F811 (after all other imports to keep organisation clear)
     EDAConfig,
     correlation_heatmap,
-    cramers_v_heatmap,
     duplicate_columns,
     duplicate_rows,
     missing_heatmap,
@@ -871,12 +880,10 @@ from src.caketool.eda import (  # noqa: E402, F811 (after all other imports to k
     psi,
     psi_category,
     psi_report,
-    roc_curve_plot,
     scatter,
     summarize_categorical_series,
     summarize_numeric_series,
     top_extreme_values,
-    violin_by_category,
 )
 
 
