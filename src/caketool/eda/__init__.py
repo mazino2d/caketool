@@ -18,8 +18,8 @@ Quick start
 >>> eda.plot_categorical_frequency(df["category"])
 >>>
 >>> # Bivariate
->>> eda.scatter(df, x="income", y="spend", color_by="segment")
->>> eda.box_by_category(df, cat_col="segment", num_col="income")
+>>> eda.plot_scatter(df, x="income", y="spend", color_by="segment")
+>>> eda.plot_distribution_by_group(df, cat_col="segment", num_col="income", mode="box")
 >>>
 >>> # Data quality
 >>> eda.missing_summary(df)
@@ -28,16 +28,12 @@ Quick start
 
 # Bivariate
 from .bivariate import (
-    bar_category_vs_category,
-    box_by_category,
-    correlation_table,
-    cramers_v,
-    cramers_v_target,
-    histogram_by_label,
-    line_with_ma,
-    roc_curve_plot,
-    scatter,
-    violin_by_category,
+    plot_category_heatmap,
+    plot_distribution_by_group,
+    plot_roc_curve,
+    plot_scatter,
+    plot_time_series,
+    rank_associations,
 )
 from .config import EDAConfig
 
@@ -87,16 +83,12 @@ __all__ = [
     "summarize_numeric_series",
     "summarize_categorical_series",
     # bivariate
-    "scatter",
-    "line_with_ma",
-    "box_by_category",
-    "violin_by_category",
-    "histogram_by_label",
-    "bar_category_vs_category",
-    "cramers_v",
-    "cramers_v_target",
-    "correlation_table",
-    "roc_curve_plot",
+    "plot_scatter",
+    "plot_time_series",
+    "plot_distribution_by_group",
+    "plot_category_heatmap",
+    "rank_associations",
+    "plot_roc_curve",
     # multivariate
     "parallel_coordinates",
     "scatter_3d",

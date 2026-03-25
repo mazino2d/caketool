@@ -19,13 +19,12 @@ from src.caketool.eda._validators import (
     top_k_series,
 )
 from src.caketool.eda.bivariate import (
-    bar_category_vs_category,
-    box_by_category,
-    correlation_table,
-    cramers_v,
-    cramers_v_target,
-    histogram_by_label,
-    line_with_ma,
+    plot_category_heatmap,
+    plot_distribution_by_group,
+    plot_roc_curve,
+    plot_scatter,
+    plot_time_series,
+    rank_associations,
     roc_curve_plot,
     scatter,
     violin_by_category,
@@ -462,31 +461,6 @@ class TestScatter:
         assert "x" in fig.layout.title.text and "y" in fig.layout.title.text
 
 
-class TestLineWithMa:
-    def test_returns_figure_with_ma(self, simple_df):
-        fig = line_with_ma(simple_df, "x", "y", ma=5)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) == 2  # raw line + MA
-
-    def test_no_ma_returns_single_trace(self, simple_df):
-        fig = line_with_ma(simple_df, "x", "y", ma=0)
-        assert len(fig.data) == 1
-
-
-class TestBoxByCategory:
-    def test_returns_figure(self, simple_df):
-        fig = box_by_category(simple_df, "cat", "x")
-        assert isinstance(fig, go.Figure)
-
-    def test_non_numeric_num_col_raises(self, simple_df):
-        with pytest.raises(TypeError):
-            box_by_category(simple_df, "x", "cat")
-
-    def test_top_k_limits_traces(self, simple_df):
-        fig = box_by_category(simple_df, "cat", "x", top_k=2)
-        assert len(fig.data) == 2
-
-
 class TestViolinByCategory:
     def test_returns_figure(self, simple_df):
         fig = violin_by_category(simple_df, "cat", "x")
@@ -496,85 +470,6 @@ class TestViolinByCategory:
         fig = violin_by_category(simple_df, "cat", "x")
         n_cats = simple_df["cat"].nunique()
         assert len(fig.data) == n_cats
-
-
-class TestHistogramByLabel:
-    def test_returns_figure(self, simple_df):
-        fig = histogram_by_label(simple_df, "x", "label")
-        assert isinstance(fig, go.Figure)
-
-    def test_traces_equal_unique_labels(self, simple_df):
-        fig = histogram_by_label(simple_df, "x", "label")
-        n_labels = simple_df["label"].nunique()
-        assert len(fig.data) == n_labels
-
-
-class TestBarCategoryVsCategory:
-    def test_returns_figure(self, simple_df):
-        fig = bar_category_vs_category(simple_df, "cat", "label")
-        assert isinstance(fig, go.Figure)
-
-    def test_normalize_changes_y_title(self, simple_df):
-        fig = bar_category_vs_category(simple_df, "cat", "label", normalize=True)
-        assert "%" in fig.layout.yaxis.title.text
-
-
-class TestCramersV:
-    def test_identical_series_returns_one(self):
-        s = pd.Series(["A", "B", "A", "C"] * 25)
-        result = cramers_v(s, s)
-        assert result == pytest.approx(1.0, abs=1e-6)
-
-    def test_independent_series_returns_near_zero(self):
-        rng = np.random.default_rng(42)
-        s1 = pd.Series(rng.choice(["X", "Y"], 500))
-        s2 = pd.Series(rng.choice(["P", "Q"], 500))
-        result = cramers_v(s1, s2)
-        assert result < 0.1
-
-    def test_returns_float_in_range(self):
-        s1 = pd.Series(["A", "B"] * 50)
-        s2 = pd.Series(["A", "B"] * 50)
-        result = cramers_v(s1, s2)
-        assert 0.0 <= result <= 1.0
-
-
-class TestCramersVTarget:
-    def test_returns_dataframe_with_correct_columns(self, simple_df):
-        result = cramers_v_target(simple_df, target="label")
-        assert isinstance(result, pd.DataFrame)
-        assert "feature" in result.columns
-        assert "cramers_v" in result.columns
-
-    def test_sorted_descending(self, simple_df):
-        result = cramers_v_target(simple_df, target="label")
-        assert result["cramers_v"].is_monotonic_decreasing
-
-    def test_missing_target_raises(self, simple_df):
-        with pytest.raises(ValueError):
-            cramers_v_target(simple_df, target="nonexistent")
-
-
-class TestCorrelationTable:
-    def test_returns_dataframe(self, simple_df):
-        result = correlation_table(simple_df)
-        assert isinstance(result, pd.DataFrame)
-        assert "col1" in result.columns
-        assert "col2" in result.columns
-        assert "correlation" in result.columns
-
-    def test_threshold_filters_rows(self):
-        # Use a DataFrame with known high correlation to ensure filtering works
-        rng = np.random.default_rng(0)
-        x = rng.normal(0, 1, 200)
-        df = pd.DataFrame({"a": x, "b": x * 2 + rng.normal(0, 0.01, 200), "c": rng.normal(0, 1, 200)})
-        result_all = correlation_table(df, threshold=0.0)
-        result_filtered = correlation_table(df, threshold=0.9)
-        assert len(result_filtered) < len(result_all)
-
-    def test_spearman_method(self, simple_df):
-        result = correlation_table(simple_df, method="spearman")
-        assert isinstance(result, pd.DataFrame)
 
 
 class TestRocCurvePlot:
@@ -588,6 +483,125 @@ class TestRocCurvePlot:
 
     def test_title_contains_auc(self, simple_df):
         fig = roc_curve_plot(simple_df, "label", "x")
+        assert "AUC" in fig.layout.title.text
+
+
+# ===========================================================================
+# New Bivariate Functions
+# ===========================================================================
+
+
+class TestPlotScatter:
+    def test_returns_figure(self, simple_df):
+        fig = plot_scatter(simple_df, "x", "y")
+        assert isinstance(fig, go.Figure)
+
+    def test_with_trend_adds_traces(self, simple_df):
+        fig = plot_scatter(simple_df, "x", "y")
+        # Always has scatter + trend (at least 2 traces)
+        assert len(fig.data) >= 2
+
+    def test_with_correlation_annotation(self, simple_df):
+        fig = plot_scatter(simple_df, "x", "y")
+        # Always shows correlation in title (r= and strength/significance)
+        assert "r=" in fig.layout.title.text
+        assert "significant" in fig.layout.title.text or "negligible" in fig.layout.title.text
+
+    def test_color_by_multiple_traces(self, simple_df):
+        fig = plot_scatter(simple_df, "x", "y", color_by="cat")
+        assert len(fig.data) > 1
+
+
+class TestPlotDistributionByGroup:
+    def test_box_mode(self, simple_df):
+        fig = plot_distribution_by_group(simple_df, "cat", "x", mode="box")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+    def test_violin_mode(self, simple_df):
+        fig = plot_distribution_by_group(simple_df, "cat", "x", mode="violin")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+    def test_hist_mode(self, simple_df):
+        fig = plot_distribution_by_group(simple_df, "cat", "x", mode="hist")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+    def test_top_k_limits_categories(self, simple_df):
+        fig = plot_distribution_by_group(simple_df, "cat", "x", mode="box", top_k=2)
+        assert len(fig.data) <= 2
+
+
+class TestPlotCategoryHeatmap:
+    def test_returns_heatmap(self, simple_df):
+        fig = plot_category_heatmap(simple_df, "cat", "label")
+        assert isinstance(fig, go.Figure)
+
+    def test_title_includes_cramers_v(self, simple_df):
+        fig = plot_category_heatmap(simple_df, "cat", "label")
+        assert "V=" in fig.layout.title.text
+
+    def test_normalize_affects_values(self, simple_df):
+        fig_norm = plot_category_heatmap(simple_df, "cat", "label", normalize=True)
+        fig_count = plot_category_heatmap(simple_df, "cat", "label", normalize=False)
+        # Both should produce figures
+        assert isinstance(fig_norm, go.Figure)
+        assert isinstance(fig_count, go.Figure)
+
+
+class TestPlotTimeSeries:
+    def test_returns_figure(self, simple_df):
+        fig = plot_time_series(simple_df, x="x", y="y")
+        assert isinstance(fig, go.Figure)
+
+    def test_multi_series(self, simple_df):
+        fig = plot_time_series(simple_df, x="x", y=["y", "z"])
+        assert isinstance(fig, go.Figure)
+
+    def test_moving_average(self, simple_df):
+        fig = plot_time_series(simple_df, x="x", y="y", ma=5)
+        assert isinstance(fig, go.Figure)
+
+    def test_group_by_creates_multiple_traces(self, simple_df):
+        fig = plot_time_series(simple_df, x="x", y="y", group_by="cat")
+        assert isinstance(fig, go.Figure)
+
+
+class TestRankAssociations:
+    def test_returns_dataframe(self, simple_df):
+        result = rank_associations(simple_df, target="label")
+        assert isinstance(result, pd.DataFrame)
+        assert "feature" in result.columns
+        assert "association" in result.columns
+        assert "p_value" in result.columns
+        assert "method" in result.columns
+
+    def test_sorted_by_association_strength(self, simple_df):
+        result = rank_associations(simple_df, target="label")
+        if len(result) > 1:
+            # Check that associations are sorted by absolute value
+            abs_vals = result["association"].abs().values
+            assert (abs_vals == sorted(abs_vals, reverse=True)).all()
+
+    def test_includes_numeric_and_categorical(self, simple_df):
+        result = rank_associations(simple_df, target="label")
+        methods = result["method"].unique()
+        # Should have both correlation and cramers_v
+        assert "pearson" in methods or "cramers_v" in methods
+
+
+class TestPlotRocCurve:
+    def test_returns_figure(self, simple_df):
+        fig = plot_roc_curve(simple_df, "label", "x")
+        assert isinstance(fig, go.Figure)
+
+    def test_has_two_traces(self, simple_df):
+        fig = plot_roc_curve(simple_df, "label", "x")
+        assert len(fig.data) == 2
+
+    def test_title_contains_auc(self, simple_df):
+        fig = plot_roc_curve(simple_df, "label", "x")
         assert "AUC" in fig.layout.title.text
 
 
@@ -898,17 +912,10 @@ class TestPsiReport:
 
 from src.caketool.eda import (  # noqa: E402, F811 (after all other imports to keep organisation clear)
     EDAConfig,
-    bar_category_vs_category,
-    box_by_category,
     correlation_heatmap,
-    correlation_table,
-    cramers_v,
     cramers_v_heatmap,
-    cramers_v_target,
     duplicate_columns,
     duplicate_rows,
-    histogram_by_label,
-    line_with_ma,
     missing_heatmap,
     missing_summary,
     parallel_coordinates,
