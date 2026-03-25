@@ -167,6 +167,40 @@ def summarize_missing_by_row(df: pd.DataFrame) -> pd.DataFrame:
     return result.reset_index(drop=True)
 
 
+def rank_missing_correlation(df: pd.DataFrame, min_missing: int = 1) -> pd.DataFrame:
+    """Rank pairwise correlations between missing indicators (Cramér's V).
+
+    For each pair of columns that both have missing values, computes how
+    correlated their missingness patterns are. High correlation suggests
+    the two columns tend to be missing together (MAR/MNAR signal).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+    min_missing : int
+        Minimum number of missing values a column must have to be included.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: col_1, col_2, missing_corr. Sorted descending by missing_corr.
+        Each pair appears only once.
+    """
+    missing_cols = [c for c in df.columns if df[c].isna().sum() >= min_missing]
+    if len(missing_cols) < 2:
+        return pd.DataFrame(columns=["col_1", "col_2", "missing_corr"])
+
+    indicators = df[missing_cols].isna().astype(int)
+    rows = []
+    cols = list(indicators.columns)
+    for i in range(len(cols)):
+        for j in range(i + 1, len(cols)):
+            corr, _ = association(indicators[cols[i]], indicators[cols[j]], method="cramers_v")
+            rows.append({"col_1": cols[i], "col_2": cols[j], "missing_corr": round(corr, 4)})
+
+    return pd.DataFrame(rows).sort_values("missing_corr", ascending=False, ignore_index=True)
+
+
 def summarize_outliers(
     df: pd.DataFrame,
     columns: list[str] | None = None,
