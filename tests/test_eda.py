@@ -30,12 +30,6 @@ from src.caketool.eda.bivariate import (
     violin_by_category,
 )
 from src.caketool.eda.config import EDAConfig
-from src.caketool.eda.multivariate import (
-    parallel_coordinates,
-    scatter_3d,
-    scatter_matrix,
-    stacked_bar,
-)
 from src.caketool.eda.overview import (
     correlation_heatmap,
     cramers_v_heatmap,
@@ -606,55 +600,6 @@ class TestPlotRocCurve:
 
 
 # ===========================================================================
-# Multivariate
-# ===========================================================================
-
-
-class TestParallelCoordinates:
-    def test_returns_figure(self, simple_df):
-        fig = parallel_coordinates(simple_df, dims=["x", "y", "z"])
-        assert isinstance(fig, go.Figure)
-
-    def test_missing_dim_raises(self, simple_df):
-        with pytest.raises(ValueError):
-            parallel_coordinates(simple_df, dims=["x", "nonexistent"])
-
-
-class TestScatter3d:
-    def test_returns_figure(self, simple_df):
-        fig = scatter_3d(simple_df, "x", "y", "z")
-        assert isinstance(fig, go.Figure)
-
-    def test_color_by_creates_multiple_traces(self, simple_df):
-        fig = scatter_3d(simple_df, "x", "y", "z", color_by="cat")
-        assert len(fig.data) > 1
-
-
-class TestScatterMatrix:
-    def test_returns_figure(self, simple_df):
-        fig = scatter_matrix(simple_df, columns=["x", "y", "z"])
-        assert isinstance(fig, go.Figure)
-
-    def test_missing_column_raises(self, simple_df):
-        with pytest.raises(ValueError):
-            scatter_matrix(simple_df, columns=["x", "nonexistent"])
-
-
-class TestStackedBar:
-    def test_returns_figure(self, simple_df):
-        fig = stacked_bar(simple_df, x="cat", category="label")
-        assert isinstance(fig, go.Figure)
-
-    def test_normalize_changes_y_title(self, simple_df):
-        fig = stacked_bar(simple_df, x="cat", category="label", normalize=True)
-        assert "%" in fig.layout.yaxis.title.text
-
-    def test_missing_column_raises(self, simple_df):
-        with pytest.raises(ValueError):
-            stacked_bar(simple_df, x="nonexistent", category="label")
-
-
-# ===========================================================================
 # Overview
 # ===========================================================================
 
@@ -918,7 +863,6 @@ from src.caketool.eda import (  # noqa: E402, F811 (after all other imports to k
     duplicate_rows,
     missing_heatmap,
     missing_summary,
-    parallel_coordinates,
     pivot_count,
     pivot_rate,
     plot_categorical_frequency,
@@ -929,9 +873,6 @@ from src.caketool.eda import (  # noqa: E402, F811 (after all other imports to k
     psi_report,
     roc_curve_plot,
     scatter,
-    scatter_3d,
-    scatter_matrix,
-    stacked_bar,
     summarize_categorical_series,
     summarize_numeric_series,
     top_extreme_values,

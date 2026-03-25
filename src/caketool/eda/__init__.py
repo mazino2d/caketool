@@ -37,14 +37,6 @@ from .bivariate import (
 )
 from .config import EDAConfig
 
-# Multivariate
-from .multivariate import (
-    parallel_coordinates,
-    scatter_3d,
-    scatter_matrix,
-    stacked_bar,
-)
-
 # Overview
 from .overview import (
     correlation_heatmap,
@@ -89,11 +81,6 @@ __all__ = [
     "plot_category_heatmap",
     "rank_associations",
     "plot_roc_curve",
-    # multivariate
-    "parallel_coordinates",
-    "scatter_3d",
-    "scatter_matrix",
-    "stacked_bar",
     # quality
     "missing_summary",
     "missing_heatmap",
