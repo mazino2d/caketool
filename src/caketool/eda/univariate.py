@@ -87,6 +87,65 @@ def _add_stat_info(fig: go.Figure, s: pd.Series, c: EDAConfig) -> None:
 # ---------------------------------------------------------------------------
 
 
+def summarize_numeric_series(
+    series: pd.Series,
+    step: int = 5,
+    low_trim: float = 0.0,
+    high_trim: float = 1.0,
+) -> pd.DataFrame:
+    """Compute a percentile summary table.
+
+    Parameters
+    ----------
+    series : pd.Series
+        Numeric series.
+    step : int
+        Percentile step size (e.g. 5 → 0%, 5%, 10%, ..., 100%).
+    low_trim : float
+        Lower quantile clip before computing.
+    high_trim : float
+        Upper quantile clip before computing.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: percentile, value, count_below, count_above.
+    """
+    if not isinstance(step, int) or isinstance(step, bool) or not (1 <= step <= 100):
+        msg = "step must be an integer in [1, 100]"
+        raise ValueError(msg)
+
+    require_numeric(series)
+    require_nonempty(series)
+    s = clip_quantiles(series.dropna(), low_trim, high_trim)
+    value_col = f"{series.name}_value"
+
+    q1 = float(s.quantile(0.25))
+    q3 = float(s.quantile(0.75))
+    iqr = q3 - q1
+    stat_rows = [
+        {"percentile": "Mean", value_col: float(s.mean())},
+        {"percentile": "Median", value_col: float(s.median())},
+        {"percentile": "Std", value_col: float(s.std())},
+        {"percentile": "Min", value_col: float(s.min())},
+        {"percentile": "Max", value_col: float(s.max())},
+        {"percentile": "Q1", value_col: q1},
+        {"percentile": "Q3", value_col: q3},
+        {"percentile": "lower_fence", value_col: max(q1 - 1.5 * iqr, float(s.min()))},
+        {"percentile": "upper_fence", value_col: min(q3 + 1.5 * iqr, float(s.max()))},
+    ]
+
+    # Always include fine-grained extremes
+    pcts = sorted(set([0.01, 0.1, 0.5, 1.0] + list(range(0, 101, step)) + [99.0, 99.5, 99.9, 99.99]))
+    pcts = [p for p in pcts if 0 <= p <= 100]
+    percentile_rows = [{"percentile": f"{p:.2f}%", value_col: float(s.quantile(p / 100))} for p in pcts]
+
+    result = pd.DataFrame(stat_rows + percentile_rows)
+    result["count_below"] = result[value_col].map(lambda threshold: int((s <= threshold).sum()))
+    result["count_above"] = len(s) - result["count_below"]
+    return result.reset_index(drop=True)
+
+
 def plot_numeric_distribution(
     data: pd.Series | dict[str, pd.Series],
     nbins: int = 40,
@@ -201,45 +260,60 @@ def plot_numeric_distribution(
     return fig
 
 
-def summarize_numeric_series(
+# ---------------------------------------------------------------------------
+# Categorical
+# ---------------------------------------------------------------------------
+
+
+def summarize_categorical_series(
     series: pd.Series,
-    step: int = 5,
-    low_trim: float = 0.0,
-    high_trim: float = 1.0,
+    top_k: int = 20,
+    dropna: bool = False,
 ) -> pd.DataFrame:
-    """Compute a percentile summary table.
+    """Compute value counts with frequency percentage.
+
+    Returns the *top_k* most frequent non-null values, an ``Others`` row
+    aggregating remaining categories (if any), and a ``NaN`` row when
+    ``dropna=False`` and missing values exist.
 
     Parameters
     ----------
     series : pd.Series
-        Numeric series.
-    step : int
-        Percentile step size (e.g. 5 → 0%, 5%, 10%, ..., 100%).
-    low_trim : float
-        Lower quantile clip before computing.
-    high_trim : float
-        Upper quantile clip before computing.
+        Any series.
+    top_k : int
+        Limit to top *k* most frequent non-null values.
+    dropna : bool
+        If False, include a NaN row in the result when missing values exist.
 
     Returns
     -------
     pd.DataFrame
-        Columns: percentile, value, count_below.
+        Columns: value, count, pct, cumulative_count, cumulative_pct.
     """
-    require_numeric(series)
+    if not isinstance(top_k, int) or isinstance(top_k, bool) or top_k < 0:
+        msg = "top_k must be a non-negative integer"
+        raise ValueError(msg)
+
     require_nonempty(series)
-    s = clip_quantiles(series.dropna(), low_trim, high_trim)
-    # Always include fine-grained extremes
-    pcts = sorted(set([0.01, 0.1, 0.5, 1.0] + list(range(0, 101, step)) + [99.0, 99.5, 99.9, 99.99]))
-    pcts = [p for p in pcts if 0 <= p <= 100]
-    values = [s.quantile(p / 100) for p in pcts]
-    result = pd.DataFrame({"percentile": pcts, f"{series.name}_value": values})
-    result["percentile"] = result["percentile"].map(lambda x: f"{x:.2f}%")
-    return result.reset_index(drop=True)
+    total = len(series)
+    nan_count = int(series.isna().sum())
 
+    # Non-null value counts
+    vc = series.value_counts(dropna=True)
+    top_vc = vc.head(top_k)
+    others_count = int(vc.iloc[top_k:].sum()) if len(vc) > top_k else 0
 
-# ---------------------------------------------------------------------------
-# Categorical
-# ---------------------------------------------------------------------------
+    rows: list[dict] = [{"value": val, "count": cnt} for val, cnt in zip(top_vc.index, top_vc.values, strict=True)]
+    if others_count > 0:
+        rows.append({"value": "Others", "count": others_count})
+    if not dropna and nan_count > 0:
+        rows.append({"value": "NaN", "count": nan_count})
+
+    df = pd.DataFrame(rows, columns=["value", "count"])
+    df["pct"] = (df["count"] / total * 100).round(2)
+    df["cumulative_count"] = df["count"].cumsum()
+    df["cumulative_pct"] = (df["cumulative_count"] / total * 100).round(2)
+    return df.reset_index(drop=True)
 
 
 def plot_categorical_frequency(
@@ -312,48 +386,3 @@ def plot_categorical_frequency(
         raise ValueError(msg)
 
     return fig
-
-
-def summarize_categorical_series(
-    series: pd.Series,
-    top_k: int = 20,
-    dropna: bool = False,
-) -> pd.DataFrame:
-    """Compute value counts with frequency percentage.
-
-    Returns the *top_k* most frequent non-null values, an ``Others`` row
-    aggregating remaining categories (if any), and a ``NaN`` row when
-    ``dropna=False`` and missing values exist.
-
-    Parameters
-    ----------
-    series : pd.Series
-        Any series.
-    top_k : int
-        Limit to top *k* most frequent non-null values.
-    dropna : bool
-        If False, include a NaN row in the result when missing values exist.
-
-    Returns
-    -------
-    pd.DataFrame
-        Columns: value, count, pct.
-    """
-    require_nonempty(series)
-    total = len(series)
-    nan_count = int(series.isna().sum())
-
-    # Non-null value counts
-    vc = series.value_counts(dropna=True)
-    top_vc = vc.head(top_k)
-    others_count = int(vc.iloc[top_k:].sum()) if len(vc) > top_k else 0
-
-    rows: list[dict] = [{"value": val, "count": cnt} for val, cnt in zip(top_vc.index, top_vc.values, strict=True)]
-    if others_count > 0:
-        rows.append({"value": "Others", "count": others_count})
-    if not dropna and nan_count > 0:
-        rows.append({"value": "NaN", "count": nan_count})
-
-    df = pd.DataFrame(rows)
-    df["pct"] = (df["count"] / total * 100).round(2)
-    return df.reset_index(drop=True)

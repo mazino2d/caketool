@@ -330,6 +330,26 @@ class TestPercentileTable:
         value_col = f"{num_series.name}_value"
         assert value_col in result.columns
 
+    def test_has_count_columns(self, num_series):
+        result = summarize_numeric_series(num_series)
+        assert "count_below" in result.columns
+        assert "count_above" in result.columns
+
+    def test_stat_rows_are_first_in_expected_order(self, num_series):
+        result = summarize_numeric_series(num_series)
+        expected = ["Mean", "Median", "Std", "Min", "Max", "Q1", "Q3", "lower_fence", "upper_fence"]
+        assert list(result["percentile"].head(len(expected))) == expected
+
+    def test_count_columns_partition_total(self, num_series):
+        result = summarize_numeric_series(num_series)
+        total = num_series.notna().sum()
+        assert (result["count_below"] + result["count_above"]).eq(total).all()
+
+    @pytest.mark.parametrize("step", [0, 101, -1, 1.5, "5", True])
+    def test_invalid_step_raises(self, num_series, step):
+        with pytest.raises(ValueError, match=r"step must be an integer in \[1, 100\]"):
+            summarize_numeric_series(num_series, step=step)
+
     def test_non_numeric_raises(self, cat_series):
         with pytest.raises(TypeError):
             summarize_numeric_series(cat_series)
@@ -342,7 +362,16 @@ class TestComputeFrequency:
 
     def test_columns_present(self, cat_series):
         result = summarize_categorical_series(cat_series)
-        assert list(result.columns) == ["value", "count", "pct"]
+        assert list(result.columns) == ["value", "count", "pct", "cumulative_count", "cumulative_pct"]
+
+    def test_cumulative_columns_are_monotonic(self, cat_series):
+        result = summarize_categorical_series(cat_series)
+        assert result["cumulative_count"].is_monotonic_increasing
+        assert result["cumulative_pct"].is_monotonic_increasing
+
+    def test_cumulative_count_ends_at_total(self, cat_series):
+        result = summarize_categorical_series(cat_series)
+        assert int(result["cumulative_count"].iloc[-1]) == len(cat_series)
 
     def test_top_k_limits_rows_with_others(self, cat_series):
         # cat_series has 4 unique; top_k=2 → 2 top + 1 Others row = 3
@@ -367,6 +396,17 @@ class TestComputeFrequency:
     def test_no_others_when_top_k_covers_all(self, cat_series):
         result = summarize_categorical_series(cat_series, top_k=100)
         assert "Others" not in result["value"].values
+
+    def test_top_k_zero_groups_all_non_null_into_others(self, cat_series):
+        result = summarize_categorical_series(cat_series, top_k=0, dropna=True)
+        assert len(result) == 1
+        assert result.iloc[0]["value"] == "Others"
+        assert int(result.iloc[0]["count"]) == len(cat_series)
+
+    @pytest.mark.parametrize("top_k", [-1, 1.5, "2", True])
+    def test_invalid_top_k_raises(self, cat_series, top_k):
+        with pytest.raises(ValueError, match="top_k must be a non-negative integer"):
+            summarize_categorical_series(cat_series, top_k=top_k)
 
 
 class TestPlotFrequency:
