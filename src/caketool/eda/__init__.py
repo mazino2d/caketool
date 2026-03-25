@@ -11,7 +11,7 @@ Quick start
 >>>
 >>> # Dataset overview
 >>> eda.profile(df)
->>> eda.correlation_heatmap(df)
+>>> eda.plot_correlations(df)
 >>>
 >>> # Univariate
 >>> eda.plot_numeric_distribution(df["age"])
@@ -39,6 +39,10 @@ from .overview import (
     calculate_correlations,
     plot_correlations,
     profile,
+    summarize_duplicates,
+    summarize_missing_by_column,
+    summarize_missing_by_row,
+    summarize_outliers,
 )
 
 # Univariate
@@ -68,4 +72,8 @@ __all__ = [
     "profile",
     "calculate_correlations",
     "plot_correlations",
+    "summarize_missing_by_column",
+    "summarize_missing_by_row",
+    "summarize_outliers",
+    "summarize_duplicates",
 ]

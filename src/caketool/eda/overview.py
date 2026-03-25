@@ -9,6 +9,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from ..metric.association_metric import association
+from ._validators import require_columns, require_numeric
 from .config import EDAConfig
 
 
@@ -94,6 +95,209 @@ def profile(df: pd.DataFrame) -> pd.DataFrame:
             )
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def summarize_missing_by_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Summarize missingness per column.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per column with missing and present statistics.
+    """
+    n_total = len(df)
+    rows: list[dict[str, object]] = []
+    for col in df.columns:
+        n_missing = int(df[col].isna().sum())
+        n_present = n_total - n_missing
+        rows.append(
+            {
+                "column": col,
+                "n_total": n_total,
+                "n_missing": n_missing,
+                "missing_pct": round(n_missing / n_total * 100, 2) if n_total else 0.0,
+                "n_present": n_present,
+                "present_pct": round(n_present / n_total * 100, 2) if n_total else 0.0,
+            }
+        )
+    if not rows:
+        return pd.DataFrame(columns=["column", "n_total", "n_missing", "missing_pct", "n_present", "present_pct"])
+    result = pd.DataFrame(rows)
+    return result.sort_values(["n_missing", "column"], ascending=[False, True], ignore_index=True)
+
+
+def summarize_missing_by_row(df: pd.DataFrame) -> pd.DataFrame:
+    """Summarize row-level missingness distribution.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+
+    Returns
+    -------
+    pd.DataFrame
+        Distribution of number of missing columns per row.
+    """
+    if len(df) == 0:
+        return pd.DataFrame(
+            columns=[
+                "n_missing_columns",
+                "n_rows",
+                "row_pct",
+                "cumulative_rows",
+                "cumulative_pct",
+            ]
+        )
+
+    row_missing_counts = df.isna().sum(axis=1)
+    dist = row_missing_counts.value_counts().sort_index()
+    result = pd.DataFrame(
+        {
+            "n_missing_columns": dist.index.astype(int),
+            "n_rows": dist.values.astype(int),
+        }
+    )
+    result["row_pct"] = (result["n_rows"] / len(df) * 100).round(2)
+    result["cumulative_rows"] = result["n_rows"].cumsum()
+    result["cumulative_pct"] = (result["cumulative_rows"] / len(df) * 100).round(2)
+    return result.reset_index(drop=True)
+
+
+def summarize_outliers(
+    df: pd.DataFrame,
+    columns: list[str] | None = None,
+    method: Literal["tukey", "zscore"] = "tukey",
+    tukey_k: float = 1.5,
+    z_threshold: float = 3.0,
+) -> pd.DataFrame:
+    """Summarize outliers for numeric columns.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+    columns : list[str], optional
+        Numeric columns to analyze. If omitted, all numeric columns are used.
+    method : {"tukey", "zscore"}
+        Outlier detection method.
+    tukey_k : float
+        IQR multiplier when ``method='tukey'``.
+    z_threshold : float
+        Absolute z-score threshold when ``method='zscore'``.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per analyzed column with outlier statistics and bounds.
+    """
+    if method not in {"tukey", "zscore"}:
+        raise ValueError("method must be one of {'tukey', 'zscore'}")
+    if not isinstance(tukey_k, int | float) or isinstance(tukey_k, bool) or tukey_k <= 0:
+        raise ValueError("tukey_k must be a positive number")
+    if not isinstance(z_threshold, int | float) or isinstance(z_threshold, bool) or z_threshold <= 0:
+        raise ValueError("z_threshold must be a positive number")
+
+    if columns is None:
+        numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    else:
+        require_columns(df, columns)
+        numeric_cols = columns
+
+    rows: list[dict[str, object]] = []
+    n_total = len(df)
+    for col in numeric_cols:
+        series = df[col]
+        require_numeric(series)
+        valid = series.dropna().astype(float)
+        n_valid = int(len(valid))
+
+        if n_valid == 0:
+            lower_bound = np.nan
+            upper_bound = np.nan
+            n_outlier = 0
+        elif method == "tukey":
+            q1 = float(valid.quantile(0.25))
+            q3 = float(valid.quantile(0.75))
+            iqr = q3 - q1
+            lower_bound = q1 - tukey_k * iqr
+            upper_bound = q3 + tukey_k * iqr
+            n_outlier = int(((valid < lower_bound) | (valid > upper_bound)).sum())
+        else:
+            mean = float(valid.mean())
+            std = float(valid.std(ddof=0))
+            lower_bound = mean - z_threshold * std
+            upper_bound = mean + z_threshold * std
+            if std == 0 or np.isnan(std):
+                n_outlier = 0
+            else:
+                n_outlier = int(((valid < lower_bound) | (valid > upper_bound)).sum())
+
+        rows.append(
+            {
+                "column": col,
+                "method": method,
+                "n_total": n_total,
+                "n_valid": n_valid,
+                "n_outlier": n_outlier,
+                "outlier_pct": round(n_outlier / n_valid * 100, 2) if n_valid else 0.0,
+                "lower_bound": lower_bound,
+                "upper_bound": upper_bound,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def summarize_duplicates(df: pd.DataFrame, subset: list[str] | None = None) -> pd.DataFrame:
+    """Summarize duplicate rows for full-row and subset-key scopes.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+    subset : list[str], optional
+        Columns used as duplicate keys. If omitted, full rows are compared.
+
+    Returns
+    -------
+    pd.DataFrame
+        Single-row summary with duplicate counts and percentages.
+    """
+    if subset is not None:
+        if len(subset) == 0:
+            raise ValueError("subset must contain at least one column")
+        require_columns(df, subset)
+
+    duplicate_mask = df.duplicated(subset=subset, keep=False)
+    n_total = len(df)
+    n_duplicate_rows = int(duplicate_mask.sum())
+
+    if n_duplicate_rows == 0:
+        n_duplicate_groups = 0
+    elif subset is None:
+        grouped = df.loc[duplicate_mask].groupby(list(df.columns), dropna=False, observed=False).size()
+        n_duplicate_groups = int((grouped > 1).sum())
+    else:
+        grouped = df.loc[duplicate_mask].groupby(subset, dropna=False, observed=False).size()
+        n_duplicate_groups = int((grouped > 1).sum())
+
+    key_columns = subset if subset is not None else list(df.columns)
+    scope = "subset" if subset is not None else "full_row"
+
+    return pd.DataFrame(
+        [
+            {
+                "scope": scope,
+                "key_columns": ", ".join(key_columns),
+                "n_total": n_total,
+                "n_duplicate_rows": n_duplicate_rows,
+                "duplicate_row_pct": round(n_duplicate_rows / n_total * 100, 2) if n_total else 0.0,
+                "n_duplicate_groups": n_duplicate_groups,
+            }
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------

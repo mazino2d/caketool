@@ -31,6 +31,10 @@ from src.caketool.eda.overview import (
     calculate_correlations,
     plot_correlations,
     profile,
+    summarize_duplicates,
+    summarize_missing_by_column,
+    summarize_missing_by_row,
+    summarize_outliers,
 )
 from src.caketool.eda.univariate import (
     plot_categorical_frequency,
@@ -680,6 +684,135 @@ class TestProfile:
         assert row["top_value"] is not None
 
 
+class TestMissingDeepDive:
+    def test_summarize_missing_by_column_returns_dataframe(self):
+        df = pd.DataFrame(
+            {
+                "a": [1, None, 3],
+                "b": [None, None, 1],
+            }
+        )
+        result = summarize_missing_by_column(df)
+        assert isinstance(result, pd.DataFrame)
+        assert list(result.columns) == ["column", "n_total", "n_missing", "missing_pct", "n_present", "present_pct"]
+
+    def test_summarize_missing_by_column_sorted_by_missing_desc(self):
+        df = pd.DataFrame(
+            {
+                "a": [1, None, 3, 4],
+                "b": [1, 2, 3, 4],
+                "c": [None, None, None, 4],
+            }
+        )
+        result = summarize_missing_by_column(df)
+        assert result.iloc[0]["column"] == "c"
+        assert result.iloc[1]["column"] == "a"
+
+    def test_summarize_missing_by_row_distribution(self):
+        df = pd.DataFrame(
+            {
+                "a": [1, None, 3],
+                "b": [None, 2, 3],
+                "c": [1, 2, None],
+            }
+        )
+        result = summarize_missing_by_row(df)
+        assert isinstance(result, pd.DataFrame)
+        assert list(result.columns) == [
+            "n_missing_columns",
+            "n_rows",
+            "row_pct",
+            "cumulative_rows",
+            "cumulative_pct",
+        ]
+        assert int(result["n_rows"].sum()) == len(df)
+
+
+class TestOutlierDeepDive:
+    def test_summarize_outliers_default_tukey(self):
+        df = pd.DataFrame(
+            {
+                "x": [1, 2, 3, 4, 100],
+                "y": [10, 10, 10, 10, 10],
+            }
+        )
+        result = summarize_outliers(df)
+        assert isinstance(result, pd.DataFrame)
+        assert set(["column", "method", "n_total", "n_valid", "n_outlier", "outlier_pct"]).issubset(result.columns)
+        assert (result["method"] == "tukey").all()
+
+    def test_summarize_outliers_supports_zscore(self):
+        df = pd.DataFrame({"x": [1, 2, 3, 4, 100]})
+        result = summarize_outliers(df, method="zscore", z_threshold=1.0)
+        assert result.iloc[0]["method"] == "zscore"
+        assert result.iloc[0]["n_outlier"] >= 1
+
+    def test_summarize_outliers_invalid_method_raises(self):
+        df = pd.DataFrame({"x": [1, 2, 3]})
+        with pytest.raises(ValueError, match="method must be one of"):
+            summarize_outliers(df, method="invalid")
+
+    def test_summarize_outliers_non_numeric_in_columns_raises(self):
+        df = pd.DataFrame({"x": [1, 2, 3], "cat": ["a", "b", "c"]})
+        with pytest.raises(TypeError, match="must be numeric"):
+            summarize_outliers(df, columns=["cat"])
+
+
+class TestDuplicateDeepDive:
+    def test_summarize_duplicates_full_row(self):
+        df = pd.DataFrame(
+            {
+                "a": [1, 1, 2, 3],
+                "b": ["x", "x", "y", "z"],
+            }
+        )
+        result = summarize_duplicates(df)
+        assert isinstance(result, pd.DataFrame)
+        assert result.iloc[0]["scope"] == "full_row"
+        assert int(result.iloc[0]["n_duplicate_rows"]) == 2
+        assert int(result.iloc[0]["n_duplicate_groups"]) == 1
+
+    def test_summarize_duplicates_subset(self):
+        df = pd.DataFrame(
+            {
+                "a": [1, 1, 2, 3],
+                "b": ["x", "y", "y", "z"],
+            }
+        )
+        result = summarize_duplicates(df, subset=["a"])
+        assert result.iloc[0]["scope"] == "subset"
+        assert int(result.iloc[0]["n_duplicate_rows"]) == 2
+
+    def test_summarize_duplicates_empty_subset_raises(self):
+        df = pd.DataFrame({"a": [1, 2]})
+        with pytest.raises(ValueError, match="subset must contain at least one column"):
+            summarize_duplicates(df, subset=[])
+
+    def test_summarize_duplicates_full_row_with_categorical(self):
+        df = pd.DataFrame(
+            {
+                "a": pd.Categorical(["x", "x", "y"], categories=["x", "y", "z"]),
+                "b": [1, 1, 2],
+            }
+        )
+        result = summarize_duplicates(df)
+        assert result.iloc[0]["scope"] == "full_row"
+        assert int(result.iloc[0]["n_duplicate_rows"]) == 2
+        assert int(result.iloc[0]["n_duplicate_groups"]) == 1
+
+    def test_summarize_duplicates_subset_with_categorical(self):
+        df = pd.DataFrame(
+            {
+                "a": pd.Categorical(["x", "x", "y"], categories=["x", "y", "z"]),
+                "b": [1, 2, 3],
+            }
+        )
+        result = summarize_duplicates(df, subset=["a"])
+        assert result.iloc[0]["scope"] == "subset"
+        assert int(result.iloc[0]["n_duplicate_rows"]) == 2
+        assert int(result.iloc[0]["n_duplicate_groups"]) == 1
+
+
 class TestCorrelationHeatmap:
     def test_returns_figure(self, simple_df):
         fig = plot_correlations(simple_df)
@@ -742,7 +875,11 @@ from src.caketool.eda import (  # noqa: E402, F811 (after all other imports to k
     plot_scatter,
     profile,
     summarize_categorical_series,
+    summarize_duplicates,
+    summarize_missing_by_column,
+    summarize_missing_by_row,
     summarize_numeric_series,
+    summarize_outliers,
 )
 
 
@@ -752,4 +889,8 @@ def test_public_api_importable():
     assert callable(plot_scatter)
     assert callable(calculate_correlations)
     assert callable(profile)
+    assert callable(summarize_missing_by_column)
+    assert callable(summarize_missing_by_row)
+    assert callable(summarize_outliers)
+    assert callable(summarize_duplicates)
     assert EDAConfig is not None
