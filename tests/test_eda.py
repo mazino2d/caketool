@@ -35,14 +35,6 @@ from src.caketool.eda.overview import (
     profile,
     top_extreme_values,
 )
-from src.caketool.eda.quality import (
-    duplicate_columns,
-    duplicate_rows,
-    missing_summary,
-    psi,
-    psi_category,
-    psi_report,
-)
 from src.caketool.eda.univariate import (
     plot_categorical_frequency,
     plot_numeric_distribution,
@@ -708,179 +700,20 @@ class TestTopExtremeValues:
             top_extreme_values(simple_df, col="nonexistent")
 
 
-# ===========================================================================
-# Quality
-# ===========================================================================
-
-
-class TestMissingSummary:
-    def test_returns_dataframe(self, simple_df):
-        result = missing_summary(simple_df)
-        assert isinstance(result, pd.DataFrame)
-
-    def test_contains_expected_columns(self, simple_df):
-        result = missing_summary(simple_df)
-        for col in ["column", "dtype", "total", "missing", "missing_pct"]:
-            assert col in result.columns
-
-    def test_numeric_columns_have_zero_count(self, simple_df):
-        result = missing_summary(simple_df)
-        row = result[result["column"] == "x"].iloc[0]
-        assert row["zero"] is not None
-
-    def test_categorical_columns_have_null_zero_count(self, simple_df):
-        result = missing_summary(simple_df)
-        row = result[result["column"] == "cat"].iloc[0]
-        assert pd.isna(row["zero"])
-
-    def test_missing_pct_computed_correctly(self):
-        df = pd.DataFrame({"a": [1, np.nan, 3, np.nan], "b": ["x", "y", "z", "w"]})
-        result = missing_summary(df)
-        row = result[result["column"] == "a"].iloc[0]
-        assert row["missing_pct"] == pytest.approx(50.0)
-
-
-class TestMissingHeatmap:
-    def test_returns_figure(self):
-        df = pd.DataFrame(
-            {
-                "a": [1, np.nan, 3, np.nan, 5],
-                "b": [np.nan, 2, np.nan, 4, 5],
-                "c": [1, 2, 3, 4, 5],
-            }
-        )
-        fig = missing_heatmap(df)
-        assert isinstance(fig, go.Figure)
-
-    def test_fewer_than_two_missing_columns_raises(self, simple_df):
-        with pytest.raises(ValueError, match="2 columns"):
-            missing_heatmap(simple_df)  # simple_df has no missing values
-
-
-class TestDuplicateRows:
-    def test_no_duplicates_returns_empty(self, simple_df):
-        result = duplicate_rows(simple_df)
-        assert result.empty
-
-    def test_detects_duplicates(self):
-        df = pd.DataFrame({"a": [1, 1, 2], "b": ["x", "x", "y"]})
-        result = duplicate_rows(df)
-        assert len(result) == 2
-        assert "_dup_count" in result.columns
-
-    def test_id_cols_subset(self):
-        df = pd.DataFrame({"a": [1, 1, 2], "b": ["x", "y", "z"]})
-        result = duplicate_rows(df, id_cols=["a"])
-        assert len(result) == 2
-
-
-class TestDuplicateColumns:
-    def test_detects_identical_columns(self):
-        df = pd.DataFrame({"a": [1, 2, 3], "b": [1, 2, 3], "c": [4, 5, 6]})
-        result = duplicate_columns(df)
-        assert len(result) == 1
-        assert set(result.iloc[0][["col1", "col2"]]) == {"a", "b"}
-
-    def test_no_duplicates_returns_empty(self, simple_df):
-        result = duplicate_columns(simple_df)
-        assert result.empty
-
-    def test_partial_match_threshold(self):
-        df = pd.DataFrame({"a": [1, 2, 3, 4], "b": [1, 2, 3, 9]})
-        # 3/4 = 75% match
-        result_75 = duplicate_columns(df, threshold=75.0)
-        result_100 = duplicate_columns(df, threshold=100.0)
-        assert len(result_75) == 1
-        assert result_100.empty
-
-
-class TestPsi:
-    def test_identical_distributions_near_zero(self):
-        rng = np.random.default_rng(0)
-        s = pd.Series(rng.normal(0, 1, 1000))
-        result = psi(s, s.copy())
-        assert result < 0.05
-
-    def test_different_distributions_high_psi(self):
-        rng = np.random.default_rng(0)
-        expected = pd.Series(rng.normal(0, 1, 1000))
-        actual = pd.Series(rng.normal(5, 1, 1000))
-        result = psi(expected, actual)
-        assert result > 0.2
-
-    def test_empty_series_returns_nan(self):
-        s = pd.Series([], dtype=float)
-        result = psi(s, pd.Series([1.0, 2.0]))
-        assert np.isnan(result)
-
-    def test_uniform_method(self):
-        rng = np.random.default_rng(0)
-        s = pd.Series(rng.normal(0, 1, 500))
-        result = psi(s, s.copy(), method="uniform")
-        assert result < 0.1
-
-
-class TestPsiCategory:
-    def test_identical_distributions_near_zero(self):
-        s = pd.Series(["A", "B", "C"] * 100)
-        result = psi_category(s, s.copy())
-        assert result < 0.01
-
-    def test_different_distributions_high_psi(self):
-        expected = pd.Series(["A"] * 90 + ["B"] * 10)
-        actual = pd.Series(["A"] * 10 + ["B"] * 90)
-        result = psi_category(expected, actual)
-        assert result > 0.2
-
-    def test_returns_float(self):
-        s = pd.Series(["X", "Y"] * 50)
-        result = psi_category(s, s.copy())
-        assert isinstance(result, float)
-
-
-class TestPsiReport:
-    def test_returns_dataframe(self, simple_df):
-        result = psi_report(simple_df, simple_df)
-        assert isinstance(result, pd.DataFrame)
-
-    def test_contains_expected_columns(self, simple_df):
-        result = psi_report(simple_df, simple_df)
-        for col in ["feature", "type", "psi", "stability"]:
-            assert col in result.columns
-
-    def test_stable_when_same_data(self, simple_df):
-        result = psi_report(simple_df, simple_df)
-        assert (result["stability"] == "Stable").all()
-
-    def test_sorted_by_psi_descending(self, simple_df):
-        result = psi_report(simple_df, simple_df)
-        assert result["psi"].is_monotonic_decreasing
-
-    def test_subset_cols(self, simple_df):
-        result = psi_report(simple_df, simple_df, cols=["x", "y"])
-        assert set(result["feature"]) == {"x", "y"}
-
-
 # ---------------------------------------------------------------------------
 # Import test – verify public API is accessible
 # ---------------------------------------------------------------------------
 
 from src.caketool.eda import (  # noqa: E402, F811 (after all other imports to keep organisation clear)
     EDAConfig,
+    calculate_all_correlations,
     correlation_heatmap,
-    duplicate_columns,
-    duplicate_rows,
-    missing_heatmap,
-    missing_summary,
     pivot_count,
     pivot_rate,
     plot_categorical_frequency,
     plot_numeric_distribution,
+    plot_scatter,
     profile,
-    psi,
-    psi_category,
-    psi_report,
-    scatter,
     summarize_categorical_series,
     summarize_numeric_series,
     top_extreme_values,
@@ -890,7 +723,7 @@ from src.caketool.eda import (  # noqa: E402, F811 (after all other imports to k
 def test_public_api_importable():
     assert callable(plot_numeric_distribution)
     assert callable(plot_categorical_frequency)
-    assert callable(scatter)
+    assert callable(plot_scatter)
+    assert callable(calculate_all_correlations)
     assert callable(profile)
-    assert callable(psi_report)
     assert EDAConfig is not None

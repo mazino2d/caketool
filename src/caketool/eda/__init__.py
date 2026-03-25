@@ -21,9 +21,6 @@ Quick start
 >>> eda.plot_scatter(df, x="income", y="spend", color_by="segment")
 >>> eda.plot_distribution_by_group(df, cat_col="segment", num_col="income", mode="box")
 >>>
->>> # Data quality
->>> eda.missing_summary(df)
->>> eda.psi_report(df_train, df_test)
 """
 
 # Bivariate
@@ -45,17 +42,6 @@ from .overview import (
     pivot_rate,
     profile,
     top_extreme_values,
-)
-
-# Data quality
-from .quality import (
-    duplicate_columns,
-    duplicate_rows,
-    missing_heatmap,
-    missing_summary,
-    psi,
-    psi_category,
-    psi_report,
 )
 
 # Univariate
@@ -81,14 +67,6 @@ __all__ = [
     "plot_category_heatmap",
     "rank_associations",
     "plot_roc_curve",
-    # quality
-    "missing_summary",
-    "missing_heatmap",
-    "duplicate_rows",
-    "duplicate_columns",
-    "psi",
-    "psi_category",
-    "psi_report",
     # overview
     "profile",
     "calculate_all_correlations",

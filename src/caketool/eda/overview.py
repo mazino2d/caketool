@@ -64,6 +64,10 @@ def profile(df: pd.DataFrame) -> pd.DataFrame:
                     "max": valid.max() if len(valid) else None,
                     "skewness": round(valid.skew(), 4) if len(valid) else None,
                     "kurtosis": round(valid.kurtosis(), 4) if len(valid) else None,
+                    "zero": int((s == 0).sum()),
+                    "zero_pct": round((s == 0).sum() / n * 100, 2) if n else 0,
+                    "negative": int((s < 0).sum()),
+                    "negative_pct": round((s < 0).sum() / n * 100, 2) if n else 0,
                     "top_value": None,
                     "top_freq": None,
                 }
@@ -81,6 +85,10 @@ def profile(df: pd.DataFrame) -> pd.DataFrame:
                     "max": None,
                     "skewness": None,
                     "kurtosis": None,
+                    "zero": None,
+                    "zero_pct": None,
+                    "negative": None,
+                    "negative_pct": None,
                     "top_value": vc.index[0] if len(vc) else None,
                     "top_freq": vc.iloc[0] if len(vc) else None,
                 }
@@ -97,7 +105,6 @@ def profile(df: pd.DataFrame) -> pd.DataFrame:
 def calculate_all_correlations(
     df: pd.DataFrame,
     num_method: Literal["pearson", "spearman"] = "pearson",
-    unique_threshold: int = 50,
 ) -> pd.DataFrame:
     """Compute pairwise association between all column pairs in a DataFrame.
 
@@ -185,7 +192,7 @@ def correlation_heatmap(
     from scipy.cluster.hierarchy import leaves_list, linkage
 
     c = _cfg(cfg)
-    corr = calculate_all_correlations(df, num_method, unique_threshold)
+    corr = calculate_all_correlations(df, num_method)
     if corr.shape[1] < 2:
         raise ValueError("Need at least 2 columns to compute associations.")
     if cluster:
