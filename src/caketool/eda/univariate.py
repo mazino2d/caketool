@@ -87,7 +87,7 @@ def _add_stat_info(fig: go.Figure, s: pd.Series, c: EDAConfig) -> None:
 # ---------------------------------------------------------------------------
 
 
-def plot_distribution(
+def plot_numeric_distribution(
     data: pd.Series | dict[str, pd.Series],
     nbins: int = 40,
     kde: bool = False,
@@ -201,7 +201,7 @@ def plot_distribution(
     return fig
 
 
-def compute_quantile(
+def summarize_numeric_series(
     series: pd.Series,
     step: int = 5,
     low_trim: float = 0.0,
@@ -242,7 +242,79 @@ def compute_quantile(
 # ---------------------------------------------------------------------------
 
 
-def compute_frequency(
+def plot_categorical_frequency(
+    series: pd.Series,
+    top_k: int = 15,
+    dropna: bool = False,
+    mode: str = "pie",
+    cfg: EDAConfig | None = None,
+) -> go.Figure:
+    """Visualize categorical frequency as bar chart or pie chart.
+
+    Parameters
+    ----------
+    series : pd.Series
+        Categorical series.
+    top_k : int
+        Top K categories to display individually; remaining are grouped
+        into an "Others" slice/bar.
+    dropna : bool
+        If False, include a NaN bar/slice when missing values exist.
+    mode : str
+        One of ``"pie"`` (default), ``"bar"`` (vertical bar), or
+        ``"barh"`` (horizontal bar).
+    cfg : EDAConfig, optional
+
+    Returns
+    -------
+    go.Figure
+    """
+    require_nonempty(series)
+    c = _cfg(cfg)
+    df = summarize_categorical_series(series, top_k=top_k, dropna=dropna)
+    labels = df["value"].astype(str)
+    counts = df["count"]
+
+    if mode == "pie":
+        fig = go.Figure(
+            go.Pie(
+                labels=labels,
+                values=counts,
+                marker={"colors": c.color_palette},
+                hole=0.3,
+            )
+        )
+        fig.update_layout(
+            title=f"Distribution: {series.name}",
+            template=c.template,
+            width=c.width,
+            height=c.height,
+        )
+    elif mode in ("bar", "barh"):
+        horizontal = mode == "barh"
+        if horizontal:
+            trace = go.Bar(y=labels, x=counts, orientation="h", marker_color=c.color_palette[0])
+            xaxis, yaxis = {"title": "Count"}, {"title": series.name, "autorange": "reversed"}
+        else:
+            trace = go.Bar(x=labels, y=counts, marker_color=c.color_palette[0])
+            xaxis, yaxis = {"title": series.name}, {"title": "Count"}
+        fig = go.Figure(trace)
+        fig.update_layout(
+            title=f"Value Counts: {series.name}",
+            xaxis=xaxis,
+            yaxis=yaxis,
+            template=c.template,
+            width=c.width,
+            height=c.height,
+        )
+    else:
+        msg = f"mode must be 'pie', 'bar', or 'barh', got {mode!r}"
+        raise ValueError(msg)
+
+    return fig
+
+
+def summarize_categorical_series(
     series: pd.Series,
     top_k: int = 20,
     dropna: bool = False,
@@ -285,75 +357,3 @@ def compute_frequency(
     df = pd.DataFrame(rows)
     df["pct"] = (df["count"] / total * 100).round(2)
     return df.reset_index(drop=True)
-
-
-def plot_frequency(
-    series: pd.Series,
-    top_k: int = 15,
-    dropna: bool = False,
-    mode: str = "pie",
-    cfg: EDAConfig | None = None,
-) -> go.Figure:
-    """Visualize categorical frequency as bar chart or pie chart.
-
-    Parameters
-    ----------
-    series : pd.Series
-        Categorical series.
-    top_k : int
-        Top K categories to display individually; remaining are grouped
-        into an "Others" slice/bar.
-    dropna : bool
-        If False, include a NaN bar/slice when missing values exist.
-    mode : str
-        One of ``"pie"`` (default), ``"bar"`` (vertical bar), or
-        ``"barh"`` (horizontal bar).
-    cfg : EDAConfig, optional
-
-    Returns
-    -------
-    go.Figure
-    """
-    require_nonempty(series)
-    c = _cfg(cfg)
-    df = compute_frequency(series, top_k=top_k, dropna=dropna)
-    labels = df["value"].astype(str)
-    counts = df["count"]
-
-    if mode == "pie":
-        fig = go.Figure(
-            go.Pie(
-                labels=labels,
-                values=counts,
-                marker={"colors": c.color_palette},
-                hole=0.3,
-            )
-        )
-        fig.update_layout(
-            title=f"Distribution: {series.name}",
-            template=c.template,
-            width=c.width,
-            height=c.height,
-        )
-    elif mode in ("bar", "barh"):
-        horizontal = mode == "barh"
-        if horizontal:
-            trace = go.Bar(y=labels, x=counts, orientation="h", marker_color=c.color_palette[0])
-            xaxis, yaxis = {"title": "Count"}, {"title": series.name, "autorange": "reversed"}
-        else:
-            trace = go.Bar(x=labels, y=counts, marker_color=c.color_palette[0])
-            xaxis, yaxis = {"title": series.name}, {"title": "Count"}
-        fig = go.Figure(trace)
-        fig.update_layout(
-            title=f"Value Counts: {series.name}",
-            xaxis=xaxis,
-            yaxis=yaxis,
-            template=c.template,
-            width=c.width,
-            height=c.height,
-        )
-    else:
-        msg = f"mode must be 'pie', 'bar', or 'barh', got {mode!r}"
-        raise ValueError(msg)
-
-    return fig

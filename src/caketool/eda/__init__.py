@@ -14,8 +14,8 @@ Quick start
 >>> eda.correlation_heatmap(df)
 >>>
 >>> # Univariate
->>> eda.plot_distribution(df["age"])
->>> eda.plot_frequency(df["category"])
+>>> eda.plot_numeric_distribution(df["age"])
+>>> eda.plot_categorical_frequency(df["category"])
 >>>
 >>> # Bivariate
 >>> eda.scatter(df, x="income", y="spend", color_by="segment")
@@ -72,20 +72,20 @@ from .quality import (
 
 # Univariate
 from .univariate import (
-    compute_frequency,
-    compute_quantile,
-    plot_distribution,
-    plot_frequency,
+    plot_categorical_frequency,
+    plot_numeric_distribution,
+    summarize_categorical_series,
+    summarize_numeric_series,
 )
 
 __all__ = [
     # config
     "EDAConfig",
     # univariate
-    "plot_distribution",
-    "plot_frequency",
-    "compute_quantile",
-    "compute_frequency",
+    "plot_numeric_distribution",
+    "plot_categorical_frequency",
+    "summarize_numeric_series",
+    "summarize_categorical_series",
     # bivariate
     "scatter",
     "line_with_ma",

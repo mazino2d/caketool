@@ -54,10 +54,10 @@ from src.caketool.eda.quality import (
     psi_report,
 )
 from src.caketool.eda.univariate import (
-    compute_frequency,
-    compute_quantile,
-    plot_distribution,
-    plot_frequency,
+    plot_categorical_frequency,
+    plot_numeric_distribution,
+    summarize_categorical_series,
+    summarize_numeric_series,
 )
 
 # ---------------------------------------------------------------------------
@@ -190,43 +190,43 @@ class TestHistogram:
     """Tests for plot_distribution (single series, no KDE)."""
 
     def test_returns_figure(self, num_series):
-        fig = plot_distribution(num_series)
+        fig = plot_numeric_distribution(num_series)
         assert isinstance(fig, go.Figure)
 
     def test_title_contains_series_name(self, num_series):
-        fig = plot_distribution(num_series)
+        fig = plot_numeric_distribution(num_series)
         assert "score" in fig.layout.title.text
 
     def test_non_numeric_raises(self, cat_series):
         with pytest.raises(TypeError):
-            plot_distribution(cat_series)
+            plot_numeric_distribution(cat_series)
 
     def test_all_null_raises(self):
         with pytest.raises(ValueError):
-            plot_distribution(pd.Series([np.nan] * 5, name="s"))
+            plot_numeric_distribution(pd.Series([np.nan] * 5, name="s"))
 
     def test_custom_cfg_applied(self, num_series):
         cfg = EDAConfig(width=500, height=300)
-        fig = plot_distribution(num_series, cfg=cfg)
+        fig = plot_numeric_distribution(num_series, cfg=cfg)
         assert fig.layout.width == 500
         assert fig.layout.height == 300
 
     def test_show_stats_adds_vlines(self, num_series):
-        fig = plot_distribution(num_series, show_stats=True)
+        fig = plot_numeric_distribution(num_series, show_stats=True)
         shapes = [s for s in fig.layout.shapes if s.type == "line"]
         assert len(shapes) == 6
 
     def test_show_stats_default_adds_vlines(self, num_series):
-        fig = plot_distribution(num_series)
+        fig = plot_numeric_distribution(num_series)
         shapes = [s for s in fig.layout.shapes if s.type == "line"]
         assert len(shapes) == 6
 
     def test_show_stats_false_no_vlines(self, num_series):
-        fig = plot_distribution(num_series, show_stats=False)
+        fig = plot_numeric_distribution(num_series, show_stats=False)
         assert len(fig.layout.shapes) == 0
 
     def test_show_stats_table_annotation(self, num_series):
-        fig = plot_distribution(num_series, show_stats=True)
+        fig = plot_numeric_distribution(num_series, show_stats=True)
         assert len(fig.layout.annotations) == 1
         table_text = fig.layout.annotations[0].text
         for label in ("Q1", "Median", "Q3", "Mean", "Lower Fence", "Upper Fence"):
@@ -239,18 +239,18 @@ class TestOverlayHistogram:
     def test_returns_figure_with_multiple_traces(self, num_series):
         rng = np.random.default_rng(2)
         s2 = pd.Series(rng.normal(2, 1, 100), name="shifted")
-        fig = plot_distribution({"A": num_series, "B": s2})
+        fig = plot_numeric_distribution({"A": num_series, "B": s2})
         assert isinstance(fig, go.Figure)
         assert len(fig.data) == 2
 
     def test_non_numeric_raises(self, num_series, cat_series):
         with pytest.raises(TypeError):
-            plot_distribution({"num": num_series, "cat": cat_series})
+            plot_numeric_distribution({"num": num_series, "cat": cat_series})
 
     def test_no_stats_on_overlay(self, num_series):
         rng = np.random.default_rng(4)
         s2 = pd.Series(rng.normal(0, 1, 100), name="s2")
-        fig = plot_distribution({"A": num_series, "B": s2}, show_stats=True)
+        fig = plot_numeric_distribution({"A": num_series, "B": s2}, show_stats=True)
         assert len(fig.layout.shapes) == 0
 
 
@@ -258,30 +258,30 @@ class TestDistribution:
     """Tests for plot_distribution (single series, kde=True) and distribution alias."""
 
     def test_returns_figure_with_two_traces(self, num_series):
-        fig = plot_distribution(num_series, kde=True)
+        fig = plot_numeric_distribution(num_series, kde=True)
         assert isinstance(fig, go.Figure)
         assert len(fig.data) == 2  # histogram + KDE
 
     def test_non_numeric_raises(self, cat_series):
         with pytest.raises(TypeError):
-            plot_distribution(cat_series, kde=True)
+            plot_numeric_distribution(cat_series, kde=True)
 
     def test_show_stats_adds_vlines(self, num_series):
-        fig = plot_distribution(num_series, kde=True, show_stats=True)
+        fig = plot_numeric_distribution(num_series, kde=True, show_stats=True)
         shapes = [s for s in fig.layout.shapes if s.type == "line"]
         assert len(shapes) == 6
 
     def test_show_stats_default_adds_vlines(self, num_series):
-        fig = plot_distribution(num_series, kde=True)
+        fig = plot_numeric_distribution(num_series, kde=True)
         shapes = [s for s in fig.layout.shapes if s.type == "line"]
         assert len(shapes) == 6
 
     def test_show_stats_false_no_vlines(self, num_series):
-        fig = plot_distribution(num_series, kde=True, show_stats=False)
+        fig = plot_numeric_distribution(num_series, kde=True, show_stats=False)
         assert len(fig.layout.shapes) == 0
 
     def test_show_stats_table_annotation(self, num_series):
-        fig = plot_distribution(num_series, kde=True, show_stats=True)
+        fig = plot_numeric_distribution(num_series, kde=True, show_stats=True)
         assert len(fig.layout.annotations) == 1
         texts = [a.text for a in fig.layout.annotations]
         for label in ("Q1", "Median", "Q3", "Mean", "Lower Fence", "Upper Fence"):
@@ -294,14 +294,14 @@ class TestOverlayDistribution:
     def test_returns_figure_with_multiple_traces(self, num_series):
         rng = np.random.default_rng(2)
         s2 = pd.Series(rng.normal(2, 1, 100), name="shifted")
-        fig = plot_distribution({"A": num_series, "B": s2}, kde=True)
+        fig = plot_numeric_distribution({"A": num_series, "B": s2}, kde=True)
         assert isinstance(fig, go.Figure)
         assert len(fig.data) == 4  # 2 series × (histogram + KDE)
 
     def test_has_histogram_and_kde_per_series(self, num_series):
         rng = np.random.default_rng(3)
         s2 = pd.Series(rng.normal(0, 2, 100), name="wide")
-        fig = plot_distribution({"A": num_series, "B": s2}, kde=True)
+        fig = plot_numeric_distribution({"A": num_series, "B": s2}, kde=True)
         hist_count = sum(1 for t in fig.data if isinstance(t, go.Histogram))
         kde_count = sum(1 for t in fig.data if isinstance(t, go.Scatter))
         assert hist_count == 2
@@ -309,93 +309,93 @@ class TestOverlayDistribution:
 
     def test_non_numeric_raises(self, num_series, cat_series):
         with pytest.raises(TypeError):
-            plot_distribution({"num": num_series, "cat": cat_series}, kde=True)
+            plot_numeric_distribution({"num": num_series, "cat": cat_series}, kde=True)
 
     def test_title_contains_first_label(self, num_series):
-        fig = plot_distribution({"Group1": num_series}, kde=True)
+        fig = plot_numeric_distribution({"Group1": num_series}, kde=True)
         assert "Group1" in fig.layout.title.text
 
 
 class TestPercentileTable:
     def test_returns_dataframe(self, num_series):
-        result = compute_quantile(num_series)
+        result = summarize_numeric_series(num_series)
         assert isinstance(result, pd.DataFrame)
 
     def test_has_percentile_column(self, num_series):
-        result = compute_quantile(num_series)
+        result = summarize_numeric_series(num_series)
         assert "percentile" in result.columns
 
     def test_has_value_column(self, num_series):
-        result = compute_quantile(num_series)
+        result = summarize_numeric_series(num_series)
         value_col = f"{num_series.name}_value"
         assert value_col in result.columns
 
     def test_non_numeric_raises(self, cat_series):
         with pytest.raises(TypeError):
-            compute_quantile(cat_series)
+            summarize_numeric_series(cat_series)
 
 
 class TestComputeFrequency:
     def test_returns_dataframe(self, cat_series):
-        result = compute_frequency(cat_series)
+        result = summarize_categorical_series(cat_series)
         assert isinstance(result, pd.DataFrame)
 
     def test_columns_present(self, cat_series):
-        result = compute_frequency(cat_series)
+        result = summarize_categorical_series(cat_series)
         assert list(result.columns) == ["value", "count", "pct"]
 
     def test_top_k_limits_rows_with_others(self, cat_series):
         # cat_series has 4 unique; top_k=2 → 2 top + 1 Others row = 3
-        result = compute_frequency(cat_series, top_k=2)
+        result = summarize_categorical_series(cat_series, top_k=2)
         assert len(result) == 3
         assert result.iloc[-1]["value"] == "Others"
 
     def test_pct_sums_to_100(self, cat_series):
-        result = compute_frequency(cat_series)
+        result = summarize_categorical_series(cat_series)
         assert result["pct"].sum() == pytest.approx(100.0, abs=0.1)
 
     def test_nan_row_included_by_default(self):
         s = pd.Series(["A", "B", None, "A", np.nan], name="x")
-        result = compute_frequency(s)
+        result = summarize_categorical_series(s)
         assert "NaN" in result["value"].values
 
     def test_nan_row_excluded_when_dropna(self):
         s = pd.Series(["A", "B", None, "A", np.nan], name="x")
-        result = compute_frequency(s, dropna=True)
+        result = summarize_categorical_series(s, dropna=True)
         assert "NaN" not in result["value"].values
 
     def test_no_others_when_top_k_covers_all(self, cat_series):
-        result = compute_frequency(cat_series, top_k=100)
+        result = summarize_categorical_series(cat_series, top_k=100)
         assert "Others" not in result["value"].values
 
 
 class TestPlotFrequency:
     def test_pie_returns_figure(self, cat_series):
-        fig = plot_frequency(cat_series, mode="pie")
+        fig = plot_categorical_frequency(cat_series, mode="pie")
         assert isinstance(fig, go.Figure)
         assert isinstance(fig.data[0], go.Pie)
 
     def test_bar_returns_figure(self, cat_series):
-        fig = plot_frequency(cat_series, mode="bar")
+        fig = plot_categorical_frequency(cat_series, mode="bar")
         assert isinstance(fig, go.Figure)
         assert isinstance(fig.data[0], go.Bar)
 
     def test_barh_horizontal(self, cat_series):
-        fig = plot_frequency(cat_series, mode="barh")
+        fig = plot_categorical_frequency(cat_series, mode="barh")
         assert isinstance(fig, go.Figure)
         assert fig.data[0].orientation == "h"
 
     def test_invalid_mode_raises(self, cat_series):
         with pytest.raises(ValueError):
-            plot_frequency(cat_series, mode="invalid")
+            plot_categorical_frequency(cat_series, mode="invalid")
 
     def test_top_k_groups_others(self, cat_series):
-        fig = plot_frequency(cat_series, top_k=2, mode="pie")
+        fig = plot_categorical_frequency(cat_series, top_k=2, mode="pie")
         labels = list(fig.data[0].labels)
         assert "Others" in labels
 
     def test_default_mode_is_pie(self, cat_series):
-        fig = plot_frequency(cat_series)
+        fig = plot_categorical_frequency(cat_series)
         assert isinstance(fig.data[0], go.Pie)
 
 
@@ -860,8 +860,6 @@ from src.caketool.eda import (  # noqa: E402, F811 (after all other imports to k
     EDAConfig,
     bar_category_vs_category,
     box_by_category,
-    compute_frequency,
-    compute_quantile,
     correlation_heatmap,
     correlation_table,
     cramers_v,
@@ -876,8 +874,8 @@ from src.caketool.eda import (  # noqa: E402, F811 (after all other imports to k
     parallel_coordinates,
     pivot_count,
     pivot_rate,
-    plot_distribution,
-    plot_frequency,
+    plot_categorical_frequency,
+    plot_numeric_distribution,
     profile,
     psi,
     psi_category,
@@ -887,14 +885,16 @@ from src.caketool.eda import (  # noqa: E402, F811 (after all other imports to k
     scatter_3d,
     scatter_matrix,
     stacked_bar,
+    summarize_categorical_series,
+    summarize_numeric_series,
     top_extreme_values,
     violin_by_category,
 )
 
 
 def test_public_api_importable():
-    assert callable(plot_distribution)
-    assert callable(plot_frequency)
+    assert callable(plot_numeric_distribution)
+    assert callable(plot_categorical_frequency)
     assert callable(scatter)
     assert callable(profile)
     assert callable(psi_report)
