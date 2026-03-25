@@ -9,7 +9,6 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from ..metric.association_metric import association
-from ._validators import require_column, require_columns
 from .config import EDAConfig
 
 
@@ -102,7 +101,7 @@ def profile(df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 
-def calculate_all_correlations(
+def calculate_correlations(
     df: pd.DataFrame,
     num_method: Literal["pearson", "spearman"] = "pearson",
     unique_threshold: int = 50,
@@ -161,7 +160,7 @@ def calculate_all_correlations(
     return pd.DataFrame(mat, index=cols, columns=cols)
 
 
-def correlation_heatmap(
+def plot_correlations(
     df: pd.DataFrame,
     num_method: Literal["pearson", "spearman"] = "pearson",
     unique_threshold: int = 50,
@@ -195,7 +194,7 @@ def correlation_heatmap(
     from scipy.cluster.hierarchy import leaves_list, linkage
 
     c = _cfg(cfg)
-    corr = calculate_all_correlations(df, num_method, unique_threshold=unique_threshold)
+    corr = calculate_correlations(df, num_method, unique_threshold=unique_threshold)
     if corr.shape[1] < 2:
         raise ValueError("Need at least 2 columns to compute associations.")
     if cluster:
@@ -224,124 +223,3 @@ def correlation_heatmap(
         height=max(c.height, corr.shape[1] * 50),
     )
     return fig
-
-
-# ---------------------------------------------------------------------------
-# Pivot tables
-# ---------------------------------------------------------------------------
-
-
-def pivot_count(
-    df: pd.DataFrame,
-    index: str,
-    columns: str,
-    values: str | None = None,
-    margins: bool = True,
-) -> pd.DataFrame:
-    """Pivot table with count aggregation.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    index : str
-        Row grouping column.
-    columns : str
-        Column grouping column.
-    values : str, optional
-        Column to count. Defaults to *index*.
-    margins : bool
-        Add row/column totals.
-
-    Returns
-    -------
-    pd.DataFrame
-    """
-    require_columns(df, [index, columns] + ([values] if values else []))
-    if values is None:
-        return pd.crosstab(df[index], df[columns], margins=margins, margins_name="Total")
-
-    result = pd.crosstab(
-        df[index],
-        df[columns],
-        values=df[values],
-        aggfunc="count",
-        margins=margins,
-        margins_name="Total",
-    )
-    return result.fillna(0).astype(int)
-
-
-def pivot_rate(
-    df: pd.DataFrame,
-    index: str,
-    columns: str,
-    target: str,
-    aggfunc: str = "mean",
-    margins: bool = True,
-) -> pd.DataFrame:
-    """Pivot table with rate aggregation (e.g. bad rate, conversion rate).
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    index : str
-        Row grouping column.
-    columns : str
-        Column grouping column.
-    target : str
-        Numeric target column to aggregate.
-    aggfunc : str
-        Aggregation function: "mean", "sum", "median".
-    margins : bool
-        Add totals.
-
-    Returns
-    -------
-    pd.DataFrame
-        Values rounded to 4 decimal places.
-    """
-    require_columns(df, [index, columns, target])
-    funcs = {"mean": "mean", "sum": "sum", "median": "median"}
-    if aggfunc not in funcs:
-        raise ValueError(f"aggfunc must be one of {list(funcs)}.")
-    result = df.pivot_table(
-        index=index,
-        columns=columns,
-        values=target,
-        aggfunc=funcs[aggfunc],
-        observed=False,
-        margins=margins,
-        margins_name="Total",
-    )
-    return result.round(4)
-
-
-# ---------------------------------------------------------------------------
-# Extreme values
-# ---------------------------------------------------------------------------
-
-
-def top_extreme_values(
-    df: pd.DataFrame,
-    col: str,
-    k: int = 10,
-    highest: bool = True,
-) -> pd.DataFrame:
-    """Return the top K rows by extreme value in a column.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    col : str
-        Column to rank by.
-    k : int
-        Number of rows to return.
-    highest : bool
-        If True, return highest values; if False, return lowest.
-
-    Returns
-    -------
-    pd.DataFrame
-    """
-    require_column(df, col)
-    return df.nlargest(k, col) if highest else df.nsmallest(k, col)

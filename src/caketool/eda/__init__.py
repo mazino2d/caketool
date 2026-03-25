@@ -36,12 +36,9 @@ from .config import EDAConfig
 
 # Overview
 from .overview import (
-    calculate_all_correlations,
-    correlation_heatmap,
-    pivot_count,
-    pivot_rate,
+    calculate_correlations,
+    plot_correlations,
     profile,
-    top_extreme_values,
 )
 
 # Univariate
@@ -69,9 +66,6 @@ __all__ = [
     "plot_roc_curve",
     # overview
     "profile",
-    "calculate_all_correlations",
-    "correlation_heatmap",
-    "pivot_count",
-    "pivot_rate",
-    "top_extreme_values",
+    "calculate_correlations",
+    "plot_correlations",
 ]

@@ -28,12 +28,9 @@ from src.caketool.eda.bivariate import (
 )
 from src.caketool.eda.config import EDAConfig
 from src.caketool.eda.overview import (
-    calculate_all_correlations,
-    correlation_heatmap,
-    pivot_count,
-    pivot_rate,
+    calculate_correlations,
+    plot_correlations,
     profile,
-    top_extreme_values,
 )
 from src.caketool.eda.univariate import (
     plot_categorical_frequency,
@@ -685,38 +682,38 @@ class TestProfile:
 
 class TestCorrelationHeatmap:
     def test_returns_figure(self, simple_df):
-        fig = correlation_heatmap(simple_df)
+        fig = plot_correlations(simple_df)
         assert isinstance(fig, go.Figure)
 
     def test_fewer_than_two_columns_raises(self):
         df = pd.DataFrame({"a": [1, 2, 3]})
         with pytest.raises(ValueError, match="2 columns"):
-            correlation_heatmap(df)
+            plot_correlations(df)
 
     def test_spearman_method(self, simple_df):
-        fig = correlation_heatmap(simple_df, num_method="spearman")
+        fig = plot_correlations(simple_df, num_method="spearman")
         assert "spearman" in fig.layout.title.text.lower()
 
 
 class TestCalculateAllCorrelations:
     def test_returns_dataframe(self, simple_df):
-        result = calculate_all_correlations(simple_df)
+        result = calculate_correlations(simple_df)
         assert isinstance(result, pd.DataFrame)
 
     def test_square_matrix(self, simple_df):
-        result = calculate_all_correlations(simple_df)
+        result = calculate_correlations(simple_df)
         assert result.shape[0] == result.shape[1] == len(simple_df.columns)
 
     def test_diagonal_is_one(self, simple_df):
-        result = calculate_all_correlations(simple_df)
+        result = calculate_correlations(simple_df)
         assert all(result.loc[c, c] == pytest.approx(1.0) for c in result.columns)
 
     def test_symmetric(self, simple_df):
-        result = calculate_all_correlations(simple_df)
+        result = calculate_correlations(simple_df)
         pd.testing.assert_frame_equal(result, result.T)
 
     def test_values_in_range(self, simple_df):
-        result = calculate_all_correlations(simple_df)
+        result = calculate_correlations(simple_df)
         assert result.values.min() >= 0.0
         assert result.values.max() <= 1.0
 
@@ -727,65 +724,9 @@ class TestCalculateAllCorrelations:
                 "label": [0, 1, 2, 0, 1, 2],
             }
         )
-        corr_low_threshold = calculate_all_correlations(df, unique_threshold=1)
-        corr_high_threshold = calculate_all_correlations(df, unique_threshold=100)
+        corr_low_threshold = calculate_correlations(df, unique_threshold=1)
+        corr_high_threshold = calculate_correlations(df, unique_threshold=100)
         assert corr_low_threshold.loc["x", "label"] != corr_high_threshold.loc["x", "label"]
-
-
-class TestPivotCount:
-    def test_returns_dataframe(self, simple_df):
-        result = pivot_count(simple_df, index="cat", columns="label")
-        assert isinstance(result, pd.DataFrame)
-
-    def test_contains_total_column_when_margins(self, simple_df):
-        result = pivot_count(simple_df, index="cat", columns="label", margins=True)
-        assert "Total" in result.columns
-
-    def test_missing_column_raises(self, simple_df):
-        with pytest.raises(ValueError):
-            pivot_count(simple_df, index="cat", columns="nonexistent")
-
-    def test_values_parameter_counts_non_null_values(self):
-        df = pd.DataFrame(
-            {
-                "grp": ["A", "A", "B", "B"],
-                "bucket": [1, 1, 1, 1],
-                "val": [10.0, np.nan, 20.0, 30.0],
-            }
-        )
-        result = pivot_count(df, index="grp", columns="bucket", values="val", margins=False)
-        assert int(result.loc["A", 1]) == 1
-        assert int(result.loc["B", 1]) == 2
-
-
-class TestPivotRate:
-    def test_returns_dataframe(self, simple_df):
-        result = pivot_rate(simple_df, index="cat", columns="label", target="x")
-        assert isinstance(result, pd.DataFrame)
-
-    def test_invalid_aggfunc_raises(self, simple_df):
-        with pytest.raises(ValueError, match="aggfunc"):
-            pivot_rate(simple_df, index="cat", columns="label", target="x", aggfunc="invalid")
-
-    def test_sum_aggfunc(self, simple_df):
-        result = pivot_rate(simple_df, index="cat", columns="label", target="x", aggfunc="sum")
-        assert isinstance(result, pd.DataFrame)
-
-
-class TestTopExtremeValues:
-    def test_returns_top_k_highest(self, simple_df):
-        result = top_extreme_values(simple_df, col="x", k=5)
-        assert len(result) == 5
-        assert result["x"].is_monotonic_decreasing
-
-    def test_returns_top_k_lowest(self, simple_df):
-        result = top_extreme_values(simple_df, col="x", k=5, highest=False)
-        assert len(result) == 5
-        assert result["x"].is_monotonic_increasing
-
-    def test_missing_column_raises(self, simple_df):
-        with pytest.raises(ValueError):
-            top_extreme_values(simple_df, col="nonexistent")
 
 
 # ---------------------------------------------------------------------------
@@ -794,17 +735,14 @@ class TestTopExtremeValues:
 
 from src.caketool.eda import (  # noqa: E402, F811 (after all other imports to keep organisation clear)
     EDAConfig,
-    calculate_all_correlations,
-    correlation_heatmap,
-    pivot_count,
-    pivot_rate,
+    calculate_correlations,
     plot_categorical_frequency,
+    plot_correlations,
     plot_numeric_distribution,
     plot_scatter,
     profile,
     summarize_categorical_series,
     summarize_numeric_series,
-    top_extreme_values,
 )
 
 
@@ -812,6 +750,6 @@ def test_public_api_importable():
     assert callable(plot_numeric_distribution)
     assert callable(plot_categorical_frequency)
     assert callable(plot_scatter)
-    assert callable(calculate_all_correlations)
+    assert callable(calculate_correlations)
     assert callable(profile)
     assert EDAConfig is not None
