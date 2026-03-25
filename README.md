@@ -139,6 +139,7 @@ with create_tracker("vertex_ai", experiment_name="my-exp", run_name="run-001",
 ```bash
 conda create -n caketool python=3.10
 conda activate caketool
+pip-compile pyproject.toml --all-extras
 pip install -e ".[dev,all]"
 pre-commit install
 ```
