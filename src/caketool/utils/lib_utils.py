@@ -3,6 +3,28 @@ import importlib
 
 
 def get_class(name: str):
+    """Import and return a class (or any attribute) by its fully qualified dotted name.
+
+    Equivalent to a dynamic ``from a.b import C`` where the full path is
+    given as a single string.  This is useful for deferred or configurable
+    imports where the exact class is not known until runtime.
+
+    Parameters
+    ----------
+    name : str
+        Fully qualified dotted path, e.g. ``"category_encoders.TargetEncoder"``
+        or ``"sklearn.linear_model.LogisticRegression"``.
+
+    Returns
+    -------
+    type
+        The resolved class or attribute object.
+
+    Examples
+    --------
+    >>> TargetEncoder = get_class("category_encoders.TargetEncoder")
+    >>> enc = TargetEncoder(smoothing=1.0)
+    """
     components = name.split(".")
     mod = __import__(components[0])
     for comp in components[1:]:

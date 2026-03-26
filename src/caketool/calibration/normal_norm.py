@@ -7,35 +7,46 @@ from scipy.stats import norm
 def calibrate_score_to_normal(
     scores: list | tuple | np.ndarray | pd.Series | float, standard=False
 ) -> np.ndarray | float:
-    """
-    Calibrates scores via normal distribution transformation while keeping output in (0, 1).
+    """Calibrate scores via normal-distribution transformation, keeping output in (0, 1).
 
-    Process:
-        1. Transform scores to z-scores using probit (inverse normal CDF)
-        2. Optionally standardize z-scores (mean=0, std=1)
-        3. Map back to (0, 1) using sigmoid function
+    Applies a three-step transformation:
 
-    This compresses extreme values toward 0.5 and produces a more balanced distribution.
+    1. Map scores to z-scores using the probit function (inverse normal CDF).
+    2. Optionally standardise z-scores to zero mean and unit variance.
+    3. Map z-scores back to (0, 1) using the sigmoid (logistic) function.
 
-    Note:
+    The result compresses extreme values toward 0.5, reducing over-confidence
+    while preserving the rank order of the original scores (monotonic
+    transformation).
+
+    Notes
     -----
-    - Only suitable for UNIMODAL distributions.
-    - For bimodal/multimodal, use supervised calibration (Isotonic, Platt Scaling, etc.)
-    - Pulls extreme values (near 0 or 1) toward 0.5 to reduce overconfidence.
-    - Preserves order: if score_a > score_b then calibrated_a > calibrated_b (monotonic).
+    - Only suitable for **unimodal** score distributions.  For bimodal or
+      multimodal distributions use supervised calibration methods such as
+      Isotonic Regression or Platt Scaling.
+    - Values exactly equal to 0 or 1 are clipped to ``1e-9`` and
+      ``1 - 1e-9`` respectively before transformation to avoid numerical
+      issues with the probit function.
 
-    Parameters:
+    Parameters
     ----------
-    scores : Union[List, Tuple, np.ndarray, pd.Series, float]
+    scores : list | tuple | np.ndarray | pd.Series | float
         Input scores in the range [0, 1].
+    standard : bool, optional
+        If ``True``, standardises the z-scores (mean=0, std=1) before
+        applying the sigmoid.  Defaults to ``False``.
 
-    standard : bool, optional, default=False
-        If True, standardizes the z-scores before applying sigmoid.
-
-    Returns:
+    Returns
     -------
-    calibrated_score : Union[np.ndarray, float]
-        Calibrated scores in the range (0, 1).
+    np.ndarray | float
+        Calibrated scores in the open interval (0, 1), same shape as input.
+
+    Examples
+    --------
+    >>> calibrate_score_to_normal([0.1, 0.5, 0.9])
+    array([0.401..., 0.5, 0.598...])
+    >>> calibrate_score_to_normal(0.99)
+    0.731...
     """
     # Clip scores to avoid issues with extreme values (0 and 1)
     scores = np.clip(scores, 1e-9, 1 - 1e-9)

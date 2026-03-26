@@ -1,6 +1,6 @@
 # Caketool - AI Instructions
 
-Caketool is a Python MLOps library providing reusable tools for feature engineering, model training, calibration, and monitoring.
+Caketool is a Python MLOps library providing reusable tools for EDA, feature engineering, model training, explainability, calibration, and monitoring.
 
 ## Build & Test Commands
 
@@ -17,19 +17,25 @@ pytest tests/
 # Lint & format
 ruff check src/ tests/ --fix
 ruff format src/ tests/
+
+# Docs (preview locally)
+pip install -e ".[docs]"
+pdoc src/caketool   # Preview at http://localhost:8080
 ```
 
 ## Architecture
 
 | Module | Purpose |
 |--------|---------|
+| `eda/` | Exploratory data analysis: overview, univariate, bivariate plots via Plotly |
 | `calibration/` | Score calibration via statistical transformations |
 | `feature/` | Feature engineering: encoding, removal, infinity handling |
 | `metric/` | Evaluation metrics: gini, PSI, sklearn wrappers |
 | `model/` | Model wrappers: BoostTree (XGBoost), VotingModel, ensembles |
+| `explainability/` | SHAP-based model-agnostic explainability: PermutationExplainer |
 | `monitor/` | Drift detection, BigQuery-based monitoring |
 | `report/` | Risk scoring and probability band analysis |
-| `experiment/` | Google Cloud AI Platform experiment tracking |
+| `experiment/` | Experiment tracking: MLflow, Vertex AI, W&B |
 | `utils/` | Helpers for arrays, strings, numbers, phone parsing, BigQuery |
 
 ## Code Conventions
@@ -48,7 +54,7 @@ Use numpy-style docstrings:
 def psi(expected: np.ndarray, actual: np.ndarray, n_bins: int = 10) -> float:
     """
     Calculate the Population Stability Index (PSI).
-    
+
     Parameters
     ----------
     expected : np.ndarray
@@ -57,7 +63,7 @@ def psi(expected: np.ndarray, actual: np.ndarray, n_bins: int = 10) -> float:
         Array of actual values.
     n_bins : int, optional
         Number of bins (default: 10).
-    
+
     Returns
     -------
     float

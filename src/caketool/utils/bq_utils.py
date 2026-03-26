@@ -8,9 +8,48 @@ DEFAULT_BQ_CLI = bigquery.Client()
 def safety_query(
     query_statement: str, client: bigquery.Client = DEFAULT_BQ_CLI, gb_limit=50, price_for_one_terabyte=8.44
 ) -> bigquery.QueryJob:
-    """
-    Query data from Big Query. Check the cost (Gb and $) before executing the query.
-    If the data size exceeds the limitation, raise error.
+    """Execute a BigQuery SQL statement after validating its estimated scan size and cost.
+
+    Performs a dry-run first to determine how many gigabytes the query will
+    process.  If the estimated scan exceeds *gb_limit*, a ``ValueError`` is
+    raised and the query is **not** executed.  Otherwise the query is run
+    normally and the resulting ``QueryJob`` is returned.
+
+    The estimated dollar cost (based on BigQuery on-demand pricing) is
+    printed to stdout before execution.
+
+    Parameters
+    ----------
+    query_statement : str
+        Valid BigQuery Standard SQL query string.
+    client : bigquery.Client, optional
+        Authenticated BigQuery client instance.  Defaults to a module-level
+        client created at import time.
+    gb_limit : float, optional
+        Maximum allowed data scan in gigabytes.  Queries that would process
+        more than this amount are rejected.  Defaults to ``50``.
+    price_for_one_terabyte : float, optional
+        On-demand price per terabyte in USD, used only for the cost estimate
+        printed to stdout.  Defaults to ``8.44`` (BigQuery on-demand pricing
+        as of 2024).
+
+    Returns
+    -------
+    bigquery.QueryJob
+        The completed query job.  Call ``.to_dataframe()`` on the result to
+        materialise the data locally.
+
+    Raises
+    ------
+    ValueError
+        If the estimated data scan exceeds *gb_limit*.
+
+    Examples
+    --------
+    >>> job = safety_query("SELECT * FROM `project.dataset.table` LIMIT 1000")
+    This query will process 0.002 Gigabytes.
+    This query will process 0.0000168 dollars.
+    >>> df = job.to_dataframe()
     """
 
     job_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=True)

@@ -24,14 +24,29 @@ LOWER_ALPHABET = "abcdefghijklmnopqrstuvwxyz"
 
 
 def remove_vn_diacritics(txt: str) -> str:
-    """
-    Converts Vietnamese characters with diacritics to their corresponding
-    ASCII equivalents.
+    """Convert Vietnamese text with diacritics to plain ASCII equivalents.
 
-    Args:
-        txt (str): The Vietnamese text to be converted.
+    Replaces all accented Vietnamese characters (e.g. ``ă``, ``ơ``, ``ệ``)
+    with their closest unaccented ASCII counterparts using a pre-built
+    translation table.  The special character ``đ``/``Đ`` is mapped to
+    ``d``/``D``.
 
-    Returns:
-        str: The converted text with diacritics removed.
+    Parameters
+    ----------
+    txt : str
+        Input text that may contain Vietnamese diacritical characters.
+
+    Returns
+    -------
+    str
+        Text with all diacritics removed, preserving original case for
+        non-accented characters.
+
+    Examples
+    --------
+    >>> remove_vn_diacritics("Nguyễn Văn Bình")
+    'Nguyen Van Binh'
+    >>> remove_vn_diacritics("Hà Nội")
+    'Ha Noi'
     """
     return txt.translate(VN_EN_TRANS)

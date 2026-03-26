@@ -1,7 +1,36 @@
 import re
 
 
-def norm_vn_phone(phone: str):
+def norm_vn_phone(phone: str) -> str | None:
+    """Normalise a Vietnamese phone number to the ``+84XXXXXXXXX`` format.
+
+    Handles legacy 11-digit numbers (e.g. ``0120xxxxxxx`` → ``+8470xxxxxxx``),
+    10-digit numbers with leading ``0`` or ``+84`` prefix, and bare 9-digit
+    subscriber numbers.  Strips whitespace before processing.
+
+    Parameters
+    ----------
+    phone : str
+        Raw phone number string in any of the supported Vietnamese formats.
+
+    Returns
+    -------
+    str | None
+        Normalised phone number in the form ``+84XXXXXXXXX``, or ``None``
+        if the input cannot be recognised as a valid Vietnamese mobile or
+        landline number.
+
+    Examples
+    --------
+    >>> norm_vn_phone("0912345678")
+    '+84912345678'
+    >>> norm_vn_phone("+84912345678")
+    '+84912345678'
+    >>> norm_vn_phone("0120 123 4567")   # legacy 11-digit Viettel
+    '+84701234567'
+    >>> norm_vn_phone("invalid")
+    None
+    """
     if not phone:
         return None
     phone = phone.replace(" ", "")
