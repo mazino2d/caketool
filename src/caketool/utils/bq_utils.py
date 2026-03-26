@@ -2,11 +2,10 @@ from google.cloud import bigquery
 
 ONE_GIGABYTE = 1024**3
 ONE_TERABYTE = 1024 * ONE_GIGABYTE
-DEFAULT_BQ_CLI = bigquery.Client()
 
 
 def safety_query(
-    query_statement: str, client: bigquery.Client = DEFAULT_BQ_CLI, gb_limit=50, price_for_one_terabyte=8.44
+    query_statement: str, client: bigquery.Client | None = None, gb_limit=50, price_for_one_terabyte=8.44
 ) -> bigquery.QueryJob:
     """Execute a BigQuery SQL statement after validating its estimated scan size and cost.
 
@@ -52,6 +51,8 @@ def safety_query(
     >>> df = job.to_dataframe()
     """
 
+    if client is None:
+        client = bigquery.Client()
     job_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=True)
     query_job = client.query(query_statement, job_config=job_config)
     bytes_processed = query_job.total_bytes_processed
