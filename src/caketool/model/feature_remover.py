@@ -151,6 +151,24 @@ class UnivariateFeatureRemover(FeatureRemover):
         self.feature_importance = None
 
     def fit(self, X: pd.DataFrame, y: pd.Series = None) -> "UnivariateFeatureRemover":
+        """Identify features to remove based on univariate statistical testing.
+
+        Applies *score_func* to each feature in *X* against *y* and marks
+        features whose p-value exceeds *threshold* for removal.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Input features.
+        y : pd.Series, optional
+            Target labels required by *score_func*.
+
+        Returns
+        -------
+        self : UnivariateFeatureRemover
+            Fitted transformer.  ``self.feature_importance`` and
+            ``self.droped_cols`` are populated after fitting.
+        """
         f_statistic, p_values = self.score_func(X, y)
         self.feature_importance = pd.DataFrame(
             {"features": X.columns, "f_statistic": f_statistic, "p_values": p_values}
