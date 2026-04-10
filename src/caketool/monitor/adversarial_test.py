@@ -1,122 +1,102 @@
 import pandas as pd
-import xgboost as xgb
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
 
-from caketool.model.feature_encoder import FeatureEncoder
+from caketool.model.classification.binary import BinaryBoostTree
+from caketool.model.config import ModelConfig
 
 
 class AdversarialModel:
-    """
-    A class designed to detect drift between two datasets by training a binary
-    classifier to distinguish between them. Drift is detected when the model can
-    successfully differentiate between the two datasets, indicating that they
-    come from different distributions.
+    """Detect distribution drift between two datasets via adversarial classification.
 
-    Attributes:
-    -----------
-    model : XGBClassifier
-        XGBoost classifier used to detect drift.
+    Trains a ``BinaryBoostTree`` to distinguish samples from ``df1`` (label=0)
+    vs ``df2`` (label=1). A high AUC indicates the model can tell them apart —
+    i.e. the distributions have drifted.
+
+    Categorical features are handled automatically by the preprocessing pipeline.
+
+    Parameters
+    ----------
+    config : ModelConfig or None
+        Configuration for the underlying ``BinaryBoostTree``. Uses
+        ``ModelConfig()`` defaults when ``None``.
+
+    Attributes
+    ----------
     auc_score : float
-        The ROC AUC score representing the ability of the model to distinguish
-        between the two datasets (high score indicates drift).
+        ROC AUC on the held-out validation split. ``-1`` before ``fit``.
+    model_ : BinaryBoostTree
+        The fitted adversarial classifier (available after ``fit``).
 
-    Methods:
+    Examples
     --------
-    fit(df1, df2, groups_col=["label"], features=None):
-        Fits the adversarial classifier to the concatenated data to detect drift.
-    show(n_features=5):
-        Displays the ROC AUC score and the top N most important features contributing to drift.
+    >>> adv = AdversarialModel()
+    >>> adv.fit(df_train, df_new)
+    >>> drift_df = adv.get_drift_features()
+    >>> print(f"AUC: {adv.auc_score:.4f}")
     """
 
-    def __init__(self) -> None:
-        """Initializes the AdversarialModel with XGBClassifier and TargetEncoder."""
-        self.model = xgb.XGBClassifier(verbosity=0, eval_metric="auc")
-        self.encoder = FeatureEncoder("category_encoders.TargetEncoder")
+    def __init__(self, config: ModelConfig | None = None) -> None:
+        self.config = config
         self.auc_score = -1
 
     def fit(
         self,
         df1: pd.DataFrame,
         df2: pd.DataFrame,
-        groups_col=None,
-        features=None,
-    ):
-        """
-        Fits the adversarial classifier to detect drift between two datasets by
-        differentiating between them. If the model can classify data points
-        from df1 and df2 effectively, this indicates that drift has occurred.
+        groups_col: list[str] | None = None,
+        features: list[str] | None = None,
+    ) -> "AdversarialModel":
+        """Fit the adversarial classifier to detect drift.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         df1 : pd.DataFrame
-            The first dataset representing the reference distribution (e.g., training data).
+            Reference dataset (e.g. training data). Assigned label ``0``.
         df2 : pd.DataFrame
-            The second dataset to compare against the reference (e.g., new or testing data).
-        groups_col : list, optional
-            Column(s) used for stratification during the train-test split (default is ["label"]).
-        features : list, optional
-            List of feature names to be used for training (default is the intersection of the columns in both datasets).
+            Comparison dataset (e.g. new production data). Assigned label ``1``.
+        groups_col : list[str], optional
+            Columns used for stratified splitting. Default ``["label"]``.
+        features : list[str], optional
+            Feature columns to use. Defaults to the intersection of both
+            DataFrames' columns.
 
-        Returns:
-        --------
-        None
+        Returns
+        -------
+        self
         """
         if groups_col is None:
             groups_col = ["label"]
-        # Concatenating the two datasets and assigning labels (0 for df1, 1 for df2)
-        data_adversarial = pd.concat(
-            [
-                df1.assign(label=0),
-                df2.assign(label=1),
-            ],
-            ignore_index=True,
-        )
 
-        # If features are not provided, use the common columns between the two datasets
+        data = pd.concat([df1.assign(label=0), df2.assign(label=1)], ignore_index=True)
+
         if features is None:
             features = list(set(df1.columns).intersection(df2.columns))
 
-        # Splitting the data into training and validation sets using stratified sampling
         X_train, X_val, y_train, y_val = train_test_split(
-            data_adversarial[features],
-            data_adversarial["label"],
+            data[features],
+            data["label"],
             test_size=0.2,
-            stratify=data_adversarial[groups_col].apply(lambda x: "_".join(map(str, x)), axis=1),
+            stratify=data[groups_col].apply(lambda x: "_".join(map(str, x)), axis=1),
         )
 
-        # Encode categorical features
-        X_train = self.encoder.fit_transform(X_train, y_train)
-        X_val = self.encoder.transform(X_val)
-        self.feature_names_ = X_train.columns.tolist()
+        self.model_ = BinaryBoostTree(self.config)
+        self.model_.fit(X_train, y_train, eval_set=[(X_val, y_val)])
 
-        # Fitting the model
-        self.model.fit(X_train, y_train)
+        self.auc_score = roc_auc_score(y_val, self.model_.predict_proba(X_val)[:, 1])
+        return self
 
-        # Calculating the ROC AUC score to measure the ability to detect drift
-        self.auc_score = roc_auc_score(y_val, self.model.predict_proba(X_val)[:, 1])
+    def get_drift_features(self) -> pd.DataFrame:
+        """Return all features ranked by their contribution to drift.
 
-    def show(self, n_features=5):
+        Features with high ``gain_pct`` are the strongest signals of
+        distribution shift between the two datasets.
+
+        Returns
+        -------
+        pd.DataFrame
+            Columns: ``feature_name``, ``gain``, ``gain_pct``, sorted by
+            ``gain_pct`` descending.
         """
-        Displays the ROC AUC score of the model, which represents the ability
-        to detect drift between the two datasets. It also shows the top N
-        important features contributing to drift detection.
-
-        Parameters:
-        -----------
-        n_features : int, optional
-            The number of top important features to display (default is 5).
-
-        Returns:
-        --------
-        None
-        """
-        print(f"ROC AUC: {self.auc_score:02f}")
-        print(f"Top {n_features} important feature(s) contributing to drift:")
-        importance_df = pd.DataFrame(
-            {
-                "feature": self.feature_names_,
-                "importance": self.model.feature_importances_,
-            }
-        ).sort_values("importance", ascending=False)
-        print(importance_df.head(n_features).to_string(index=False))
+        fi = self.model_.get_feature_importance()
+        return fi[["feature_name", "gain", "gain_pct"]].sort_values("gain_pct", ascending=False).reset_index(drop=True)

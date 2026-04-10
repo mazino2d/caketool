@@ -1,17 +1,30 @@
-"""Model building utilities for binary classification.
+"""Model building utilities for credit risk and machine learning tasks.
 
-Provides:
+Provides XGBoost-based models with integrated preprocessing pipelines for
+binary classification, multiclass classification, ranking, and regression.
 
-- ``BoostTree`` – XGBoost-based binary classifier with a built-in
-  preprocessing pipeline (categorical encoding → infinity handling →
-  univariate feature selection → collinear feature removal → XGBoost).
-  Supports out-of-fold cross-validation via ``BoostTree.fit_oof``.
-- ``EnsembleBoostTree`` – Ensemble of ``BoostTree`` models that averages
-  predictions; typically used with OOF models.
-- ``VotingModel`` – Generic ensemble that averages predictions from any
-  list of scikit-learn-compatible estimators.
+Task-specific models
+--------------------
+- ``BinaryBoostTree`` – binary classification (``binary:logistic``)
+- ``MulticlassBoostTree`` – multiclass classification (``multi:softprob``)
+- ``BoostRanker`` – learning-to-rank (``rank:ndcg``)
+- ``BoostRegressor`` – regression (``reg:squarederror``)
+
+Ensemble utilities
+------------------
+- ``BaseEnsemble`` – averages predictions from a list of ``BaseBoostTree`` models
+- ``VotingModel`` – averages predictions from any sklearn-compatible estimators
+
+Configuration
+-------------
+- ``ModelConfig`` – typed dataclass for all model and preprocessing parameters
 """
 
-from .boost_tree import BoostTree as BoostTree
-from .boost_tree import EnsembleBoostTree as EnsembleBoostTree
-from .voting_model import VotingModel as VotingModel
+from .base.boost_tree import BaseBoostTree as BaseBoostTree
+from .base.ensemble import BaseEnsemble as BaseEnsemble
+from .base.voting_model import VotingModel as VotingModel
+from .classification.binary import BinaryBoostTree as BinaryBoostTree
+from .classification.multiclass import MulticlassBoostTree as MulticlassBoostTree
+from .config import ModelConfig as ModelConfig
+from .ranking.ranker import BoostRanker as BoostRanker
+from .regression.regressor import BoostRegressor as BoostRegressor
