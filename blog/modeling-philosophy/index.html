@@ -6,33 +6,37 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Nguyên lý và thực hành trong machine learning engineering, minh hoạ bằng caketool.">
+        <meta name="description" content="Models don't need to be right — they need to be useful. Why parsimony matters, and the three questions you must answer before building anything.">
       
       
         <meta name="author" content="mazino2d">
       
       
-        <link rel="canonical" href="https://mazino2d.github.io/caketool/">
+        <link rel="canonical" href="https://mazino2d.github.io/caketool/blog/modeling-philosophy/">
       
       
+        <link rel="prev" href="../problem-formulation/">
+      
+      
+        <link rel="next" href="../modeling-mindset/">
       
       
         
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>ML Engineering Blog</title>
+        <title>The Philosophy of Modeling: A Controlled Approximation - ML Engineering Blog</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -51,7 +55,7 @@
       
     
     
-    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -76,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#ml-modeling-101-principles-practice" class="md-skip">
+        <a href="#the-philosophy-of-modeling-a-controlled-approximation" class="md-skip">
           Skip to content
         </a>
       
@@ -92,7 +96,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="." title="ML Engineering Blog" class="md-header__button md-logo" aria-label="ML Engineering Blog" data-md-component="logo">
+    <a href="../.." title="ML Engineering Blog" class="md-header__button md-logo" aria-label="ML Engineering Blog" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -112,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Home
+              The Philosophy of Modeling: A Controlled Approximation
             
           </span>
         </div>
@@ -209,7 +213,9 @@
           
             
               
-              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" hidden>
                 <div class="md-sidebar__scrollwrap">
                   <div class="md-sidebar__inner">
                     
@@ -218,7 +224,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="ML Engineering Blog" class="md-nav__button md-logo" aria-label="ML Engineering Blog" data-md-component="logo">
+    <a href="../.." title="ML Engineering Blog" class="md-nav__button md-logo" aria-label="ML Engineering Blog" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -233,37 +239,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Home
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="." class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -279,37 +258,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#series-ml-modeling-101" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Series: ML Modeling 101
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -321,7 +269,7 @@
   
   
     <li class="md-nav__item">
-      <a href="api/index.html" class="md-nav__link">
+      <a href="../../api/index.html" class="md-nav__link">
         
   
   
@@ -349,6 +297,8 @@
             
             
               
+                
+              
               <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
                 <div class="md-sidebar__scrollwrap">
                   <div class="md-sidebar__inner">
@@ -368,10 +318,54 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#series-ml-modeling-101" class="md-nav__link">
+  <a href="#what-is-a-model" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Series: ML Modeling 101
+        What Is a Model?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#correct-vs-useful" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "Correct" vs "Useful"
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-parsimony-principle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Parsimony Principle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#before-you-start-three-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before You Start: Three Questions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#three-practical-consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three Practical Consequences
       
     </span>
   </a>
@@ -387,107 +381,151 @@
             
           
           
-            <div class="md-content" data-md-component="content">
-              
-              <article class="md-content__inner md-typeset">
-                
-                  
-
-
-
-<h1 id="ml-modeling-101-principles-practice">ML Modeling 101: Principles &amp; Practice</h1>
-<p>A series on the foundational ideas behind machine learning — how to think about problems, design experiments, and operate models in production. Each post focuses on a principle rather than a tool. Examples are drawn from credit risk and real-world classification and regression problems.</p>
-<hr />
-<h2 id="series-ml-modeling-101">Series: ML Modeling 101</h2>
-<table>
-<thead>
-<tr>
-<th>#</th>
-<th>Post</th>
-<th>What it covers</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>0</td>
-<td><a href="blog/modeling-philosophy/">The Philosophy of Modeling: A Controlled Approximation</a></td>
-<td>Models don't need to be right — they need to be useful. Parsimony and three questions to answer before you start</td>
-</tr>
-<tr>
-<td>1</td>
-<td><a href="blog/problem-formulation/">Problem Formulation: Getting the Question Right Before Choosing a Model</a></td>
-<td>Translating a business problem into an ML problem. Target variable, unit of observation, horizon</td>
-</tr>
-<tr>
-<td>2</td>
-<td><a href="blog/data-understanding/">Data Understanding: How Your Data Was Born Matters</a></td>
-<td>Data Generating Process, population vs sample, EDA as hypothesis testing</td>
-</tr>
-<tr>
-<td>3</td>
-<td><a href="blog/feature-engineering-ml/">Feature Engineering: Where Domain Knowledge Becomes Signal</a></td>
-<td>Signal vs noise, transformation trade-offs, and leakage prevention — the most dangerous mistake in ML</td>
-</tr>
-<tr>
-<td>4</td>
-<td><a href="blog/experimental-design/">Experimental Design: The Split Determines the Conclusion</a></td>
-<td>Train/val/test roles, no peeking, cross-validation, temporal split</td>
-</tr>
-<tr>
-<td>5</td>
-<td><a href="blog/model-selection/">Model Selection: No Free Lunch</a></td>
-<td>No Free Lunch Theorem, inductive bias, bias-variance tradeoff</td>
-</tr>
-<tr>
-<td>6</td>
-<td><a href="blog/training-optimization/">Training &amp; Optimization: Minimizing a Proxy of the Real Objective</a></td>
-<td>Loss functions, gradient descent, regularization as a prior belief</td>
-</tr>
-<tr>
-<td>7</td>
-<td><a href="blog/model-evaluation/">Model Evaluation: Measure What You Actually Need to Optimize</a></td>
-<td>Classification metrics, calibration, slice-based evaluation, metric hacking</td>
-</tr>
-<tr>
-<td>8</td>
-<td><a href="blog/hyperparameter-tuning/">Hyperparameter Tuning: Searching with a Strategy</a></td>
-<td>Grid search, random search, Bayesian optimization, overfitting hyperparameters</td>
-</tr>
-<tr>
-<td>9</td>
-<td><a href="blog/interpretability/">Interpretability &amp; Explainability: Models Must Be Trusted</a></td>
-<td>SHAP, LIME, PDP/ICE, WoE scorecard, global vs local explanation</td>
-</tr>
-<tr>
-<td>10</td>
-<td><a href="blog/productionization-monitoring/">Productionization &amp; Monitoring: Models Decay Over Time</a></td>
-<td>Training-serving skew, data drift vs concept drift, PSI, retraining strategy</td>
-</tr>
-<tr>
-<td>11</td>
-<td><a href="blog/modeling-mindset/">The Modeling Mindset: Synthesis</a></td>
-<td>Iterative process, every decision is a hypothesis, domain knowledge beats algorithms</td>
-</tr>
-</tbody>
-</table>
-<hr />
-<p><em>The caketool API Reference is available at <a href="api/index.html">API Reference</a>.</em></p>
-
-
-
-
-
-
-
-
-
-
-
-
-                
-              </article>
+  <div class="md-content md-content--post" data-md-component="content">
+    <div class="md-sidebar md-sidebar--post" data-md-component="sidebar" data-md-type="navigation">
+      <div class="md-sidebar__scrollwrap">
+        <div class="md-sidebar__inner md-post">
+          <nav class="md-nav md-nav--primary">
+            <div class="md-post__back">
+              <div class="md-nav__title md-nav__container">
+                <a href="../" class="md-nav__link">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+                  <span class="md-ellipsis">
+                    Back to index
+                  </span>
+                </a>
+              </div>
             </div>
+            
+              <div class="md-post__authors md-typeset">
+                
+                  <div class="md-profile md-post__profile">
+                    <span class="md-author md-author--long">
+                      <img src="https://github.com/mazino2d.png" alt="Khoi Do">
+                    </span>
+                    <span class="md-profile__description">
+                      <strong>
+                        
+                          Khoi Do
+                        
+                      </strong>
+                      <br>
+                      Sr. Data Scientist
+                    </span>
+                  </div>
+                
+              </div>
+            
+            <ul class="md-post__meta md-nav__list">
+              <li class="md-nav__item md-nav__item--section">
+                <div class="md-post__title">
+                  <span class="md-ellipsis">
+                    Metadata
+                  </span>
+                </div>
+                <nav class="md-nav">
+                  <ul class="md-nav__list">
+                    <li class="md-nav__item">
+                      <div class="md-nav__link">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 19H5V8h14m-3-7v2H8V1H6v2H5c-1.11 0-2 .89-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-1V1m-1 11h-5v5h5z"/></svg>
+                        <time datetime="2026-04-10 00:00:00+00:00" class="md-ellipsis">April 10, 2026</time>
+                      </div>
+                    </li>
+                    
+                    
+                    
+                      
+                      <li class="md-nav__item">
+                        <div class="md-nav__link">
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 20a8 8 0 0 0 8-8 8 8 0 0 0-8-8 8 8 0 0 0-8 8 8 8 0 0 0 8 8m0-18a10 10 0 0 1 10 10 10 10 0 0 1-10 10C6.47 22 2 17.5 2 12A10 10 0 0 1 12 2m.5 5v5.25l4.5 2.67-.75 1.23L11 13V7z"/></svg>
+                          <span class="md-ellipsis">
+                            
+                              3 min read
+                            
+                          </span>
+                        </div>
+                      </li>
+                    
+                  </ul>
+                </nav>
+              </li>
+            </ul>
+            
+          </nav>
           
+        </div>
+      </div>
+    </div>
+    <article class="md-content__inner md-typeset">
+      
+        
+  
+
+
+
+
+<h1 id="the-philosophy-of-modeling-a-controlled-approximation">The Philosophy of Modeling: A Controlled Approximation</h1>
+<blockquote>
+<p><em>"All models are wrong, but some are useful."</em> — George Box</p>
+</blockquote>
+<p>The first question beginners ask is: "Which model is best?" That's the wrong question. The right question is: "Best at what, and for which problem?"</p>
+<!-- more -->
+
+<h2 id="what-is-a-model">What Is a Model?</h2>
+<p>A model is a <strong>controlled approximation</strong> of reality. Not a replica. Not the truth. A simplified representation of the world, precise enough to support a specific decision.</p>
+<p>A map is a model of geography. It omits elevation changes, road textures, building colors — yet it's enough to navigate. The map is "wrong" in a literal sense, but useful in a practical one.</p>
+<p>ML models work the same way. A logistic regression predicting loan default doesn't capture the full complexity of human financial behavior. But if it helps a bank reduce its default rate by 2% over the current heuristic, it's useful — and that's what matters.</p>
+<h2 id="correct-vs-useful">"Correct" vs "Useful"</h2>
+<p>This is where many data scientists get lost: they pursue a "correct" model instead of one that's "good enough for the specific decision at hand."</p>
+<p>A practical example: in a credit scoring problem with moderate data (100k records, 50 features), a <strong>carefully tuned logistic regression</strong> often matches or outperforms XGBoost in production — and it's far easier to explain to a compliance team. A neural network with a complex architecture might achieve AUC 0.003 higher on the test set, but it can't be deployed because no one can explain why customer A was rejected while customer B was approved.</p>
+<p>The "most correct" model by metric is not always the best model for the problem.</p>
+<h2 id="the-parsimony-principle">The Parsimony Principle</h2>
+<p><strong>Occam's Razor</strong> applied to modeling: between two models that explain the data equally well, prefer the simpler one.</p>
+<p>Not because simplicity is a goal in itself. But because:</p>
+<ul>
+<li><strong>Fewer assumptions</strong> → fewer ways to be wrong in unexpected ways</li>
+<li><strong>Better generalization</strong> → less overfitting to training data</li>
+<li><strong>Easier to maintain</strong> → when business requirements change, a simple model is easier to update</li>
+<li><strong>Easier to debug</strong> → when the model fails in production, root cause analysis is faster</li>
+</ul>
+<p>Parsimony doesn't mean always using a linear model. It means: <strong>don't add complexity unless there is clear evidence that the complexity is necessary.</strong></p>
+<p>Complexity must earn its way in.</p>
+<h2 id="before-you-start-three-questions">Before You Start: Three Questions</h2>
+<p>Before opening a notebook, answer these three questions:</p>
+<p><strong>1. What exactly are we approximating?</strong></p>
+<p>Describe the input-output relationship precisely. "Predict the probability that a customer will miss a payment within the next 90 days, based on transaction history and demographic data." Not just "build a credit model."</p>
+<p><strong>2. What does "good enough" mean?</strong></p>
+<p>Set a concrete, measurable success criterion <em>before</em> training anything. "A Gini coefficient of at least 0.35 on the holdout set, with precision at top 10% above 40%." Not "the model should be accurate."</p>
+<p><strong>3. Who will use this output, and to make which decision?</strong></p>
+<p>Will a credit analyst review each prediction manually? Or will an automated system approve or reject in real time? The answer directly shapes the threshold, latency requirement, and interpretability standard.</p>
+<p>These aren't formalities. They define the scope, success criteria, and constraints of the entire pipeline — from data collection to deployment.</p>
+<h2 id="three-practical-consequences">Three Practical Consequences</h2>
+<p>This philosophy has three concrete implications:</p>
+<p><strong>Baseline first, complexity later.</strong> Always start with the simplest possible model. If a linear model achieves Gini 0.30 and the business needs 0.35, there's a clear reason to add complexity. If it already hits 0.36, stop.</p>
+<p><strong>Metrics must come from the problem.</strong> AUC is not the objective — it's a proxy. The objective is a business outcome. Don't chase a pretty number at the expense of the decision the model is actually serving.</p>
+<p><strong>The best model is the one that gets used.</strong> A 0.95 accuracy model that no one trusts enough to deploy is worthless. An 0.82 accuracy model that the team understands, trusts, and can maintain has real value.</p>
+<p>This is the mental framework for the rest of this series. Every subsequent topic — problem formulation, feature engineering, evaluation, monitoring — comes back to the same question: "Which approximation is good enough for this decision?"</p>
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+  
+
+
+
+      
+    </article>
+  </div>
+
           
 <script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
         </div>
@@ -547,12 +585,12 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.top", "search.highlight", "search.suggest", "content.code.copy", "toc.follow"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.top", "search.highlight", "search.suggest", "content.code.copy", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
-        <script src="javascripts/back-link.js"></script>
+        <script src="../../javascripts/back-link.js"></script>
       
     
   </body>
