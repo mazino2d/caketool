@@ -5,6 +5,10 @@ from sklearn.model_selection import train_test_split
 from caketool.model.classification.binary import BinaryBoostTree
 from caketool.model.config import ModelConfig
 
+# Disable univariate filtering by default: adversarial labels are random when
+# distributions match, so all features would be dropped with the standard 0.05 threshold.
+_ADVERSARIAL_DEFAULT_CONFIG = ModelConfig(univariate_threshold=1.0)
+
 
 class AdversarialModel:
     """Detect distribution drift between two datasets via adversarial classification.
@@ -37,7 +41,7 @@ class AdversarialModel:
     """
 
     def __init__(self, config: ModelConfig | None = None) -> None:
-        self.config = config
+        self.config = config if config is not None else _ADVERSARIAL_DEFAULT_CONFIG
         self.auc_score = -1
 
     def fit(
@@ -72,6 +76,7 @@ class AdversarialModel:
 
         if features is None:
             features = list(set(df1.columns).intersection(df2.columns))
+        self.feature_names_ = features
 
         X_train, X_val, y_train, y_val = train_test_split(
             data[features],
