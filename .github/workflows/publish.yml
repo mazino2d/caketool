@@ -107,12 +107,13 @@ jobs:
 
       - run: pip install -e ".[docs]"
 
-      - run: mkdocs build
+      - run: pdoc src/caketool -o docs/api/
 
-      - run: pdoc src/caketool -o site/api/
+      - run: mkdocs build
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
+          destination_dir: docs
