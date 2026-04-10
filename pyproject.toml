@@ -50,6 +50,7 @@ all = [
 ]
 docs = [
     "pdoc>=14.0",
+    "mkdocs-material[imaging]>=9.0",
 ]
 dev = [
     "build",
