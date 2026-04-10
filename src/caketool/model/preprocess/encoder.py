@@ -9,16 +9,15 @@ from caketool.utils.lib_utils import get_class
 
 
 class FeatureEncoder(TransformerMixin, BaseEstimator):
-    """
-    A wrapper for categorical encoders that automatically detects and encodes object columns.
+    """A wrapper for categorical encoders that automatically detects and encodes object columns.
 
     This encoder wraps any encoder from category_encoders or similar libraries that
-    follow the sklearn API and have a `cols` attribute after fitting.
+    follow the sklearn API and have a ``cols`` attribute after fitting.
 
     Parameters
     ----------
     encoder_name : str
-        Fully qualified class name of the encoder (e.g., "category_encoders.TargetEncoder").
+        Fully qualified class name of the encoder (e.g., ``"category_encoders.TargetEncoder"``).
     **kwargs
         Additional arguments passed to the encoder constructor.
 
@@ -52,21 +51,14 @@ class FeatureEncoder(TransformerMixin, BaseEstimator):
 
     Examples
     --------
-    >>> # Target encoding (requires y)
     >>> encoder = FeatureEncoder("category_encoders.TargetEncoder", smoothing=1.0)
     >>> encoder.fit(X_train, y_train)
-    >>> X_encoded = encoder.transform(X_test)
-
-    >>> # One-hot encoding (no y needed)
-    >>> encoder = FeatureEncoder("category_encoders.OneHotEncoder", use_cat_names=True)
-    >>> encoder.fit(X_train)
     >>> X_encoded = encoder.transform(X_test)
     """
 
     def __init__(self, encoder_name: str, **kwargs) -> None:
         self.encoder_name = encoder_name
         self.encoder_kwargs = kwargs
-        # Encoder created lazily in fit() for sklearn clone() compatibility
 
     def get_params(self, deep: bool = True) -> dict:
         """Get parameters for this estimator (sklearn clone() compatibility)."""
@@ -82,8 +74,7 @@ class FeatureEncoder(TransformerMixin, BaseEstimator):
         return self
 
     def fit(self, X: pd.DataFrame, y=None) -> "FeatureEncoder":
-        """
-        Fit the encoder on object columns.
+        """Fit the encoder on object columns.
 
         Parameters
         ----------
@@ -95,9 +86,7 @@ class FeatureEncoder(TransformerMixin, BaseEstimator):
         Returns
         -------
         self : FeatureEncoder
-            Fitted encoder.
         """
-        # Create encoder here (not in __init__) for sklearn clone() compatibility
         encoder_class = get_class(self.encoder_name)
         self.encoder_ = encoder_class(**self.encoder_kwargs)
 
@@ -110,13 +99,11 @@ class FeatureEncoder(TransformerMixin, BaseEstimator):
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        """
-        Transform object columns using the fitted encoder.
+        """Transform object columns using the fitted encoder.
 
         Parameters
         ----------
         X : pd.DataFrame
-            Input features.
 
         Returns
         -------
@@ -134,7 +121,6 @@ class FeatureEncoder(TransformerMixin, BaseEstimator):
         fitted_set = set(self.fitted_cols_)
         object_cols_set = set(self.object_cols_)
 
-        # Warn about new categorical columns not seen during fit
         current_cat_cols = set(X.select_dtypes(["object", "category"]).columns)
         new_cat_cols = current_cat_cols - object_cols_set
         if new_cat_cols:
@@ -155,7 +141,6 @@ class FeatureEncoder(TransformerMixin, BaseEstimator):
             return X
 
         missing_columns = fitted_set - original_set
-
         if missing_columns:
             warnings.warn(
                 f"Columns {list(missing_columns)} were fitted but not found in input. "

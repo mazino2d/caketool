@@ -53,8 +53,6 @@ class TestAdversarialModel:
         """Test AdversarialModel initialization."""
         model = AdversarialModel()
         assert model.auc_score == -1
-        assert model.model is not None
-        assert model.encoder is not None
 
     def test_fit_no_drift(self, reference_df, no_drift_df):
         """Test fit with similar distributions (low AUC expected)."""
@@ -90,12 +88,36 @@ class TestAdversarialModel:
         assert hasattr(model, "feature_names_")
         assert len(model.feature_names_) == 3
 
-    def test_show(self, reference_df, drift_df, capsys):
-        """Test show method outputs correctly."""
+    def test_get_drift_features_schema(self, reference_df, drift_df):
+        """get_drift_features returns a DataFrame with the expected columns."""
         model = AdversarialModel()
         model.fit(reference_df, drift_df)
-        model.show(n_features=2)
+        result = model.get_drift_features()
 
-        captured = capsys.readouterr()
-        assert "ROC AUC:" in captured.out
-        assert "Top 2 important feature(s)" in captured.out
+        assert isinstance(result, pd.DataFrame)
+        assert list(result.columns) == ["feature_name", "gain", "gain_pct"]
+
+    def test_get_drift_features_sorted(self, reference_df, drift_df):
+        """get_drift_features is sorted by gain_pct descending."""
+        model = AdversarialModel()
+        model.fit(reference_df, drift_df)
+        result = model.get_drift_features()
+
+        assert result["gain_pct"].is_monotonic_decreasing
+
+    def test_get_drift_features_covers_all_features(self, reference_df, drift_df):
+        """get_drift_features includes one row per feature used during fit."""
+        model = AdversarialModel()
+        model.fit(reference_df, drift_df)
+        result = model.get_drift_features()
+
+        assert len(result) == len(reference_df.columns)
+        assert set(result["feature_name"]) == set(reference_df.columns)
+
+    def test_get_drift_features_gain_pct_sums_to_one(self, reference_df, drift_df):
+        """gain_pct values sum to 1.0."""
+        model = AdversarialModel()
+        model.fit(reference_df, drift_df)
+        result = model.get_drift_features()
+
+        assert abs(result["gain_pct"].sum() - 1.0) < 1e-6

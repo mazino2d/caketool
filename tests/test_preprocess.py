@@ -1,13 +1,17 @@
-"""Tests for model preprocessing and ensemble modules."""
+"""Tests for caketool.model.preprocess transformers."""
 
 import numpy as np
 import pandas as pd
 import pytest
-from sklearn.base import BaseEstimator
 from sklearn.datasets import make_classification
-from src.caketool.model.feature_remover import ColinearFeatureRemover, FeatureRemover, UnivariateFeatureRemover
-from src.caketool.model.infinity_handler import InfinityHandler
-from src.caketool.model.voting_model import VotingModel
+from src.caketool.model.preprocess import (
+    ColinearFeatureRemover,
+    FeatureRemover,
+    InfinityHandler,
+    MissingValueImputer,
+    OutlierClipper,
+    UnivariateFeatureRemover,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -38,7 +42,7 @@ def classification_data():
 
 class TestFeatureRemover:
     def test_removes_specified_columns(self, sample_df):
-        remover = FeatureRemover(droped_cols=("a", "b"))
+        remover = FeatureRemover(dropped_cols=("a", "b"))
         result = remover.fit_transform(sample_df)
 
         assert "a" not in result.columns
@@ -46,32 +50,30 @@ class TestFeatureRemover:
         assert "c" in result.columns
 
     def test_ignores_nonexistent_columns(self, sample_df):
-        remover = FeatureRemover(droped_cols=("nonexistent",))
+        remover = FeatureRemover(dropped_cols=("nonexistent",))
         result = remover.fit_transform(sample_df)
 
         assert list(result.columns) == list(sample_df.columns)
 
-    def test_empty_droped_cols(self, sample_df):
-        remover = FeatureRemover(droped_cols=())
+    def test_empty_dropped_cols(self, sample_df):
+        remover = FeatureRemover(dropped_cols=())
         result = remover.fit_transform(sample_df)
 
         assert list(result.columns) == list(sample_df.columns)
 
     def test_remove_all_columns(self, sample_df):
-        remover = FeatureRemover(droped_cols=("a", "b", "c"))
+        remover = FeatureRemover(dropped_cols=("a", "b", "c"))
         result = remover.fit_transform(sample_df)
 
         assert len(result.columns) == 0
 
     def test_fit_returns_self(self, sample_df):
-        remover = FeatureRemover(droped_cols=("a",))
-        result = remover.fit(sample_df)
-
-        assert result is remover
+        remover = FeatureRemover(dropped_cols=("a",))
+        assert remover.fit(sample_df) is remover
 
     def test_transform_does_not_mutate_input(self, sample_df):
         original_cols = list(sample_df.columns)
-        remover = FeatureRemover(droped_cols=("a",))
+        remover = FeatureRemover(dropped_cols=("a",))
         remover.fit_transform(sample_df)
 
         assert list(sample_df.columns) == original_cols
@@ -84,7 +86,6 @@ class TestFeatureRemover:
 
 class TestColinearFeatureRemover:
     def test_removes_highly_correlated_feature(self):
-        # b is almost perfectly correlated with a
         df = pd.DataFrame(
             {
                 "a": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0],
@@ -98,38 +99,39 @@ class TestColinearFeatureRemover:
         remover.fit(df, y)
         result = remover.transform(df)
 
-        # a and b are highly collinear — one should be dropped
         assert len(result.columns) < len(df.columns)
         assert "c" in result.columns
 
+    def test_removes_negatively_correlated_feature(self):
+        # b = -a, so corr(a, b) = -1.0 — should still be caught
+        arr = np.arange(1.0, 11.0)
+        df = pd.DataFrame({"a": arr, "b": -arr, "c": np.random.default_rng(0).random(10)})
+        y = pd.Series(arr > 5, dtype=int)
+
+        remover = ColinearFeatureRemover(correlation_threshold=0.9)
+        remover.fit(df, y)
+        result = remover.transform(df)
+
+        assert len(result.columns) < len(df.columns)
+
     def test_keeps_uncorrelated_features(self):
-        np.random.seed(42)
-        df = pd.DataFrame(
-            {
-                "x": np.random.rand(50),
-                "y": np.random.rand(50),
-                "z": np.random.rand(50),
-            }
-        )
-        target = pd.Series(np.random.randint(0, 2, 50))
+        rng = np.random.default_rng(42)
+        df = pd.DataFrame({"x": rng.random(50), "y": rng.random(50), "z": rng.random(50)})
+        target = pd.Series(rng.integers(0, 2, 50))
 
         remover = ColinearFeatureRemover(correlation_threshold=0.9)
         remover.fit(df, target)
         result = remover.transform(df)
 
-        # Randomly generated features unlikely to exceed threshold
         assert len(result.columns) == 3
 
     def test_default_threshold_is_09(self):
-        remover = ColinearFeatureRemover()
-        assert remover.correlation_threshold == 0.9
+        assert ColinearFeatureRemover().correlation_threshold == 0.9
 
     def test_fit_returns_self(self, sample_df):
         y = pd.Series([0, 1, 0, 1, 0])
         remover = ColinearFeatureRemover()
-        result = remover.fit(sample_df, y)
-
-        assert result is remover
+        assert remover.fit(sample_df, y) is remover
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +142,6 @@ class TestColinearFeatureRemover:
 class TestUnivariateFeatureRemover:
     def test_removes_irrelevant_features(self, classification_data):
         X, y = classification_data
-        # Add a purely random (irrelevant) feature
         X = X.copy()
         np.random.seed(0)
         X["noise"] = np.random.rand(len(X))
@@ -149,17 +150,14 @@ class TestUnivariateFeatureRemover:
         remover.fit(X, y)
         result = remover.transform(X)
 
-        # The noise feature should be removed
         assert "noise" not in result.columns
 
     def test_keeps_relevant_features(self, classification_data):
         X, y = classification_data
         remover = UnivariateFeatureRemover(threshold=0.05)
         remover.fit(X, y)
-        result = remover.transform(X)
 
-        # At least some original informative features should remain
-        assert len(result.columns) > 0
+        assert len(remover.transform(X).columns) > 0
 
     def test_feature_importance_stored_after_fit(self, classification_data):
         X, y = classification_data
@@ -173,18 +171,14 @@ class TestUnivariateFeatureRemover:
     def test_fit_returns_self(self, classification_data):
         X, y = classification_data
         remover = UnivariateFeatureRemover()
-        result = remover.fit(X, y)
-
-        assert result is remover
+        assert remover.fit(X, y) is remover
 
     def test_high_threshold_keeps_all(self, classification_data):
         X, y = classification_data
         remover = UnivariateFeatureRemover(threshold=1.0)
         remover.fit(X, y)
-        result = remover.transform(X)
 
-        # p_value <= 1.0 always → nothing removed
-        assert len(result.columns) == len(X.columns)
+        assert len(remover.transform(X).columns) == len(X.columns)
 
 
 # ---------------------------------------------------------------------------
@@ -194,97 +188,118 @@ class TestUnivariateFeatureRemover:
 
 class TestInfinityHandler:
     def test_replaces_positive_infinity(self):
-        df = pd.DataFrame({"a": [1.0, np.inf, 3.0], "b": [4.0, 5.0, 6.0]})
-        handler = InfinityHandler(def_val=-100)
-        result = handler.fit_transform(df)
+        df = pd.DataFrame({"a": [1.0, np.inf, 3.0]})
+        result = InfinityHandler(def_val=-100).fit_transform(df)
+
+        assert result["a"].iloc[1] == -100
+
+    def test_replaces_negative_infinity(self):
+        df = pd.DataFrame({"a": [1.0, -np.inf, 3.0]})
+        result = InfinityHandler(def_val=-100).fit_transform(df)
 
         assert result["a"].iloc[1] == -100
 
     def test_does_not_modify_finite_values(self):
         df = pd.DataFrame({"a": [1.0, 2.0, 3.0]})
-        handler = InfinityHandler(def_val=-100)
-        result = handler.fit_transform(df)
+        result = InfinityHandler(def_val=-100).fit_transform(df)
 
         assert list(result["a"]) == [1.0, 2.0, 3.0]
 
     def test_skips_object_columns(self):
         df = pd.DataFrame({"a": [1.0, np.inf, 3.0], "b": ["x", "y", "z"]})
-        handler = InfinityHandler(def_val=-100)
-        result = handler.fit_transform(df)
+        result = InfinityHandler(def_val=-100).fit_transform(df)
 
         assert list(result["b"]) == ["x", "y", "z"]
 
-    def test_multiple_inf_columns(self):
-        df = pd.DataFrame({"a": [np.inf, 2.0], "b": [1.0, np.inf]})
-        handler = InfinityHandler(def_val=0)
-        result = handler.fit_transform(df)
+    def test_does_not_mutate_input(self):
+        df = pd.DataFrame({"a": [np.inf, 2.0]})
+        InfinityHandler().fit_transform(df)
 
-        assert result["a"].iloc[0] == 0
-        assert result["b"].iloc[1] == 0
+        assert np.isinf(df["a"].iloc[0])
 
     def test_default_replacement_value_is_minus_100(self):
+        assert InfinityHandler().def_val == -100
+
+    def test_fit_returns_self(self):
         handler = InfinityHandler()
-        assert handler.def_val == -100
+        assert handler.fit(pd.DataFrame({"a": [1.0]})) is handler
+
+
+# ---------------------------------------------------------------------------
+# MissingValueImputer
+# ---------------------------------------------------------------------------
+
+
+class TestMissingValueImputer:
+    def test_fills_nan_with_median(self):
+        df = pd.DataFrame({"a": [1.0, 2.0, np.nan, 4.0]})
+        imputer = MissingValueImputer(strategy="median")
+        result = imputer.fit_transform(df)
+
+        assert not result["a"].isna().any()
+        assert result["a"].iloc[2] == pytest.approx(2.0)  # median of [1,2,4]
+
+    def test_fills_nan_with_mean(self):
+        df = pd.DataFrame({"a": [1.0, 3.0, np.nan]})
+        imputer = MissingValueImputer(strategy="mean")
+        result = imputer.fit_transform(df)
+
+        assert result["a"].iloc[2] == pytest.approx(2.0)
+
+    def test_fills_nan_with_constant(self):
+        df = pd.DataFrame({"a": [1.0, np.nan]})
+        imputer = MissingValueImputer(strategy="constant", fill_value=-999)
+        result = imputer.fit_transform(df)
+
+        assert result["a"].iloc[1] == -999
+
+    def test_skips_object_columns(self):
+        df = pd.DataFrame({"a": [np.nan, 2.0], "b": [None, "x"]})
+        imputer = MissingValueImputer(strategy="constant", fill_value=0)
+        result = imputer.fit_transform(df)
+
+        assert result["b"].iloc[0] is None
 
     def test_fit_returns_self(self):
         df = pd.DataFrame({"a": [1.0, 2.0]})
-        handler = InfinityHandler()
-        result = handler.fit(df)
-
-        assert result is handler
+        imputer = MissingValueImputer()
+        assert imputer.fit(df) is imputer
 
 
 # ---------------------------------------------------------------------------
-# VotingModel
+# OutlierClipper
 # ---------------------------------------------------------------------------
 
 
-class _ConstantEstimator(BaseEstimator):
-    """Dummy estimator that always returns a fixed value."""
+class TestOutlierClipper:
+    def test_clips_upper_outliers(self):
+        df = pd.DataFrame({"a": [1.0, 2.0, 3.0, 4.0, 1000.0]})
+        clipper = OutlierClipper(lower_quantile=0.0, upper_quantile=0.8)
+        result = clipper.fit_transform(df)
 
-    def __init__(self, value: float):
-        self.value = value
+        assert result["a"].max() <= df["a"].quantile(0.8) + 1e-9
 
-    def fit(self, X, y=None):
-        return self
+    def test_clips_lower_outliers(self):
+        df = pd.DataFrame({"a": [-1000.0, 2.0, 3.0, 4.0, 5.0]})
+        clipper = OutlierClipper(lower_quantile=0.2, upper_quantile=1.0)
+        result = clipper.fit_transform(df)
 
-    def predict(self, X):
-        return np.full(len(X), self.value)
+        assert result["a"].min() >= df["a"].quantile(0.2) - 1e-9
 
-    def predict_proba(self, X):
-        return np.column_stack([np.full(len(X), 1 - self.value), np.full(len(X), self.value)])
+    def test_does_not_mutate_input(self):
+        df = pd.DataFrame({"a": [1.0, 1000.0]})
+        OutlierClipper().fit_transform(df)
 
+        assert df["a"].iloc[1] == 1000.0
 
-class TestVotingModel:
-    def test_predict_averages_estimators(self):
-        X = pd.DataFrame({"a": [1, 2, 3]})
-        estimators = [_ConstantEstimator(0.2), _ConstantEstimator(0.4)]
-        model = VotingModel(estimators)
-        result = model.predict(X)
+    def test_skips_object_columns(self):
+        df = pd.DataFrame({"a": [1.0, 100.0], "b": ["x", "y"]})
+        clipper = OutlierClipper()
+        result = clipper.fit_transform(df)
 
-        np.testing.assert_allclose(result, [0.3, 0.3, 0.3])
-
-    def test_predict_proba_averages_estimators(self):
-        X = pd.DataFrame({"a": [1, 2]})
-        estimators = [_ConstantEstimator(0.0), _ConstantEstimator(1.0)]
-        model = VotingModel(estimators)
-        result = model.predict_proba(X)
-
-        # Average of [1,0] and [0,1] → [0.5, 0.5]
-        np.testing.assert_allclose(result[:, 0], [0.5, 0.5])
-        np.testing.assert_allclose(result[:, 1], [0.5, 0.5])
-
-    def test_single_estimator_returns_its_predictions(self):
-        X = pd.DataFrame({"a": [1, 2, 3]})
-        estimators = [_ConstantEstimator(0.7)]
-        model = VotingModel(estimators)
-        result = model.predict(X)
-
-        np.testing.assert_allclose(result, [0.7, 0.7, 0.7])
+        assert list(result["b"]) == ["x", "y"]
 
     def test_fit_returns_self(self):
-        X = pd.DataFrame({"a": [1, 2]})
-        model = VotingModel([_ConstantEstimator(0.5)])
-        result = model.fit(X)
-
-        assert result is model
+        df = pd.DataFrame({"a": [1.0, 2.0]})
+        clipper = OutlierClipper()
+        assert clipper.fit(df) is clipper

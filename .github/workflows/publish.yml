@@ -107,7 +107,9 @@ jobs:
 
       - run: pip install -e ".[docs]"
 
-      - run: pdoc src/caketool -o site/
+      - run: mkdocs build
+
+      - run: pdoc src/caketool -o site/api/
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
