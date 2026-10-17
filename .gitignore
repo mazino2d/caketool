@@ -116,3 +116,5 @@ notebook.ipynb
 
 # Weights & Biases
 wandb/
+# shared MkDocs base config, fetched at build time
+/.mkdocs/
