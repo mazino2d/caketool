@@ -16,8 +16,7 @@ credit scoring models, including:
 - **explainability** – SHAP-based global and local model explanations.
 - **experiment** – Unified experiment tracking interface for Vertex AI,
   MLflow, and Weights & Biases.
-- **monitor** – Drift detection (adversarial classification) and
-  BigQuery-backed distribution monitoring.
+- **monitor** – Drift detection (adversarial classification).
 - **report** – Risk score segmentation and reporting for credit decisions.
 
 Quick start
@@ -31,4 +30,9 @@ Quick start
 try:
     from ._version import version as __version__
 except ImportError:
-    __version__ = "unknown"
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        __version__ = version("caketool")
+    except PackageNotFoundError:
+        __version__ = "unknown"

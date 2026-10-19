@@ -1,4 +1,4 @@
-from src.caketool.metric import gini
+from caketool.metric import gini
 
 
 def test_gini_1():

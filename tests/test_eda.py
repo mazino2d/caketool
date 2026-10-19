@@ -10,7 +10,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # Validators
 # ---------------------------------------------------------------------------
-from src.caketool.eda._validators import (
+from caketool.eda._validators import (
     clip_quantiles,
     require_column,
     require_columns,
@@ -18,7 +18,7 @@ from src.caketool.eda._validators import (
     require_numeric,
     top_k_series,
 )
-from src.caketool.eda.bivariate import (
+from caketool.eda.bivariate import (
     plot_category_heatmap,
     plot_distribution_by_group,
     plot_roc_curve,
@@ -26,8 +26,8 @@ from src.caketool.eda.bivariate import (
     plot_time_series,
     rank_associations,
 )
-from src.caketool.eda.config import EDAConfig
-from src.caketool.eda.overview import (
+from caketool.eda.config import EDAConfig
+from caketool.eda.overview import (
     calculate_correlations,
     plot_correlations,
     profile,
@@ -36,13 +36,13 @@ from src.caketool.eda.overview import (
     summarize_missing_by_row,
     summarize_outliers,
 )
-from src.caketool.eda.univariate import (
+from caketool.eda.univariate import (
     plot_categorical_frequency,
     plot_numeric_distribution,
     summarize_categorical_series,
     summarize_numeric_series,
 )
-from src.caketool.metric.association_metric import association
+from caketool.metric.association_metric import association
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -866,7 +866,7 @@ class TestCalculateAllCorrelations:
 # Import test – verify public API is accessible
 # ---------------------------------------------------------------------------
 
-from src.caketool.eda import (  # noqa: E402, F811 (after all other imports to keep organisation clear)
+from caketool.eda import (  # noqa: E402, F811 (after all other imports to keep organisation clear)
     EDAConfig,
     calculate_correlations,
     plot_categorical_frequency,

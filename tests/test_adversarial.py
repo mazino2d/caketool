@@ -3,7 +3,8 @@ import warnings
 import numpy as np
 import pandas as pd
 import pytest
-from src.caketool.monitor import AdversarialModel
+
+from caketool.monitor import AdversarialModel
 
 
 @pytest.fixture

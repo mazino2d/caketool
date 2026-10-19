@@ -12,23 +12,26 @@ class ModelConfig:
 
     Controls the preprocessing pipeline, feature selection, and XGBoost
     hyperparameters. Pass an instance to any ``BaseBoostTree`` subclass
-    (``BinaryBoostTree``, ``MulticlassBoostTree``, ``BoostRegressor``,
-    ``BoostRanker``).
+    (``BinaryBoostTree``, ``MulticlassBoostTree``).
 
     Parameters
     ----------
     encoder_name : str
         Fully qualified class name of the categorical encoder.
         Default ``"category_encoders.TargetEncoder"``.
+    encoder_cv : int or None
+        Folds for out-of-fold target encoding of the training data, so the
+        feature selectors and XGBoost do not train on in-sample target means.
+        Ignored for unsupervised encoders. ``None`` disables it. Default ``5``.
     use_outlier_clipper : bool
-        Whether to apply ``OutlierClipper`` as the first preprocessing step.
+        Whether to apply ``OutlierClipper`` after ``InfinityHandler``.
         Default ``False``.
     outlier_lower_quantile : float
         Lower percentile for ``OutlierClipper``. Default ``0.01``.
     outlier_upper_quantile : float
         Upper percentile for ``OutlierClipper``. Default ``0.99``.
     use_missing_imputer : bool
-        Whether to apply ``MissingValueImputer`` after ``InfinityHandler``.
+        Whether to apply ``MissingValueImputer`` after ``FeatureEncoder``.
         Default ``False``.
     missing_strategy : {"median", "mean", "constant"}
         Imputation strategy for ``MissingValueImputer``. Default ``"median"``.
@@ -40,6 +43,9 @@ class ModelConfig:
     univariate_threshold : float
         P-value threshold for ``UnivariateFeatureRemover``. Features with
         p-value above this are dropped. Default ``0.05``.
+    univariate_score_func : callable
+        Scoring function for ``UnivariateFeatureRemover``. Missing values are
+        excluded per column before scoring. Default ``f_classif``.
     random_state : int
         XGBoost random seed. Default ``8799``.
     max_depth : int
@@ -64,6 +70,7 @@ class ModelConfig:
 
     # Encoder
     encoder_name: str = "category_encoders.TargetEncoder"
+    encoder_cv: int | None = 5
     # OutlierClipper (optional)
     use_outlier_clipper: bool = False
     outlier_lower_quantile: float = 0.01

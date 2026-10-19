@@ -41,7 +41,7 @@ class MissingValueImputer(TransformerMixin, BaseEstimator):
         -------
         self
         """
-        num_cols = X.select_dtypes(exclude="object").columns
+        num_cols = X.select_dtypes("number").columns
         if self.strategy == "median":
             self.fill_values_ = X[num_cols].median().to_dict()
         elif self.strategy == "mean":
