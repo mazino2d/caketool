@@ -1,6 +1,7 @@
 import pandas as pd
 import pytest
-from src.caketool.feature import generate_features_by_window
+
+from caketool.feature import generate_features_by_window
 
 
 @pytest.fixture

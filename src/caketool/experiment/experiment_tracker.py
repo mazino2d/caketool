@@ -13,8 +13,10 @@ class ExperimentTracker(ABC):
     to different experiment tracking backends (Vertex AI, MLflow, wandb).
 
     Use this class as a context manager (``with`` statement) to automatically
-    open and close a run. Set ``mode="deploy"`` to disable all logging in
-    production without changing any other code.
+    open and close a run. In ``"develop"`` mode, logging outside a ``with``
+    block raises ``RuntimeError`` instead of silently dropping data. A run
+    whose block raises is closed with a failed status. Set ``mode="deploy"``
+    to disable all logging in production without changing any other code.
 
     API keys and credentials should be set via environment variables, either
     directly in the shell or through a ``.env`` file passed via ``dotenv_path``.
@@ -47,6 +49,26 @@ class ExperimentTracker(ABC):
         self.experiment_name = experiment_name
         self.run_name = run_name
         self.mode = mode
+        self._run = None
+
+    def _should_log(self) -> bool:
+        """
+        Return ``True`` if logging calls should reach the backend.
+
+        In ``"deploy"`` mode logging is a silent no-op. In ``"develop"`` mode
+        a run must be open (inside a ``with`` block), otherwise the logged
+        data would be lost.
+
+        Raises
+        ------
+        RuntimeError
+            If called in ``"develop"`` mode outside a ``with`` block.
+        """
+        if self.mode != "develop":
+            return False
+        if self._run is None:
+            raise RuntimeError("No active run. Use the tracker inside a `with` block before logging.")
+        return True
 
     @abstractmethod
     def log_params(self, params: dict[str, float | int | str]) -> None:
@@ -199,11 +221,12 @@ class VertexAITracker(ExperimentTracker):
             "location": "GOOGLE_CLOUD_LOCATION",
             "bucket_name": "VERTEX_STAGING_BUCKET",
         }
+        passed = {"project": project, "location": location, "bucket_name": bucket_name}
         if dotenv_path is not None:
             from dotenv import dotenv_values
 
             env_vals = dotenv_values(dotenv_path)
-            conflicts = [p for p, e in _env_map.items() if locals()[p] is not None and e in env_vals]
+            conflicts = [p for p, e in _env_map.items() if passed[p] is not None and e in env_vals]
             if conflicts:
                 raise ValueError(f"Cannot pass both dotenv_path and direct params: {conflicts}")
 
@@ -234,11 +257,12 @@ class VertexAITracker(ExperimentTracker):
             experiment_tensorboard=self.experiment_tensorboard,
             staging_bucket=self.bucket_name,
         )
-        if self.mode == "develop":
-            self.experiment_run = aiplatform.start_run(self.run_name)
-            self.execution = aiplatform.start_execution(
-                display_name="Experiment Tracking", schema_title="system.ContainerExecution"
-            )
+        self.execution = None
+
+    @property
+    def experiment_run(self):
+        """The active Vertex AI ``ExperimentRun`` (``None`` outside a ``with`` block)."""
+        return self._run
 
     def log_params(self, params: dict[str, float | int | str]) -> None:
         """
@@ -249,8 +273,8 @@ class VertexAITracker(ExperimentTracker):
         params : dict[str, float | int | str]
             Hyperparameter names and their values.
         """
-        if self.mode == "develop":
-            self.experiment_run.log_params(params)
+        if self._should_log():
+            self._run.log_params(params)
 
     def log_metrics(self, metrics: dict[str, float | int | str], step: int | None = None) -> None:
         """
@@ -266,11 +290,11 @@ class VertexAITracker(ExperimentTracker):
         step : int or None, optional
             Training step or epoch number.
         """
-        if self.mode == "develop":
+        if self._should_log():
             if step is not None:
-                self.experiment_run.log_time_series_metrics(metrics, step=step)
+                self._run.log_time_series_metrics(metrics, step=step)
             else:
-                self.experiment_run.log_metrics(metrics)
+                self._run.log_metrics(metrics)
 
     def log_file(self, filename: str, artifact_id: str) -> None:
         """
@@ -283,7 +307,7 @@ class VertexAITracker(ExperimentTracker):
         artifact_id : str
             Unique identifier for this artifact within the run.
         """
-        if self.mode == "develop":
+        if self._should_log():
             blob = self._add_artifact(artifact_id)
             blob.upload_from_filename(filename)
 
@@ -298,7 +322,7 @@ class VertexAITracker(ExperimentTracker):
         artifact_id : str
             Unique identifier for this artifact within the run.
         """
-        if self.mode == "develop":
+        if self._should_log():
             pickle_out = pickle.dumps(var)
             blob = self._add_artifact(artifact_id)
             blob.upload_from_string(pickle_out)
@@ -339,23 +363,31 @@ class VertexAITracker(ExperimentTracker):
         if blob.exists():
             raise ValueError(f"{uri} existed! (Cannot overwrite)")
         artifact = self._aiplatform.Artifact.create(uri=uri, schema_title="system.Artifact")
-        self.experiment_run._metadata_node.add_artifacts_and_executions(
+        self._run._metadata_node.add_artifacts_and_executions(
             artifact_resource_names=[artifact.resource_name]
         )
         return blob
 
     def __enter__(self):
-        """Open the Vertex AI run and execution context."""
+        """Start the Vertex AI run, then an execution inside it."""
         if self.mode == "develop":
+            self._run = self._aiplatform.start_run(self.run_name)
+            self._run.__enter__()
+            self.execution = self._aiplatform.start_execution(
+                display_name="Experiment Tracking", schema_title="system.ContainerExecution"
+            )
             self.execution.__enter__()
-            self.experiment_run.__enter__()
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        """Close the Vertex AI run and execution context."""
-        if self.mode == "develop":
-            self.execution.__exit__(exc_type, exc_value, exc_traceback)
-            self.experiment_run.__exit__(exc_type, exc_value, exc_traceback)
+        """Close the execution, then the run (both marked failed if the block raised)."""
+        if self.mode == "develop" and self._run is not None:
+            try:
+                self.execution.__exit__(exc_type, exc_value, exc_traceback)
+            finally:
+                self._run.__exit__(exc_type, exc_value, exc_traceback)
+                self._run = None
+                self.execution = None
 
 
 class MLflowTracker(ExperimentTracker):
@@ -412,11 +444,12 @@ class MLflowTracker(ExperimentTracker):
         import mlflow
 
         _env_map = {"tracking_uri": "MLFLOW_TRACKING_URI", "artifact_location": "MLFLOW_ARTIFACT_LOCATION"}
+        passed = {"tracking_uri": tracking_uri, "artifact_location": artifact_location}
         if dotenv_path is not None:
             from dotenv import dotenv_values
 
             env_vals = dotenv_values(dotenv_path)
-            conflicts = [p for p, e in _env_map.items() if locals()[p] is not None and e in env_vals]
+            conflicts = [p for p, e in _env_map.items() if passed[p] is not None and e in env_vals]
             if conflicts:
                 raise ValueError(f"Cannot pass both dotenv_path and direct params: {conflicts}")
 
@@ -426,7 +459,6 @@ class MLflowTracker(ExperimentTracker):
         self.artifact_location = artifact_location or os.environ.get("MLFLOW_ARTIFACT_LOCATION")
         self.tags = tags or {}
         self._mlflow = mlflow
-        self._run = None
 
         if self.tracking_uri:
             mlflow.set_tracking_uri(self.tracking_uri)
@@ -447,7 +479,7 @@ class MLflowTracker(ExperimentTracker):
         params : dict[str, float | int | str]
             Hyperparameter names and their values.
         """
-        if self.mode == "develop" and self._run:
+        if self._should_log():
             self._mlflow.log_params(params)
 
     def log_metrics(self, metrics: dict[str, float | int | str], step: int | None = None) -> None:
@@ -461,7 +493,7 @@ class MLflowTracker(ExperimentTracker):
         step : int or None, optional
             Training step or epoch number. Used for plotting metrics over time.
         """
-        if self.mode == "develop" and self._run:
+        if self._should_log():
             self._mlflow.log_metrics(metrics, step=step)
 
     def log_file(self, filename: str, artifact_id: str) -> None:
@@ -475,7 +507,7 @@ class MLflowTracker(ExperimentTracker):
         artifact_id : str
             Subdirectory path within the run's artifact store.
         """
-        if self.mode == "develop" and self._run:
+        if self._should_log():
             self._mlflow.log_artifact(filename, artifact_path=artifact_id)
 
     def log_pickle(self, var: object, artifact_id: str) -> None:
@@ -489,7 +521,7 @@ class MLflowTracker(ExperimentTracker):
         artifact_id : str
             Name used for the ``.pkl`` file in the artifact store.
         """
-        if self.mode == "develop" and self._run:
+        if self._should_log():
             import os
             import tempfile
 
@@ -537,9 +569,9 @@ class MLflowTracker(ExperimentTracker):
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        """End the active MLflow run."""
+        """End the active MLflow run, marking it ``FAILED`` if the block raised."""
         if self.mode == "develop" and self._run:
-            self._mlflow.end_run()
+            self._mlflow.end_run(status="FAILED" if exc_type is not None else "FINISHED")
             self._run = None
 
 
@@ -601,7 +633,6 @@ class WandbTracker(ExperimentTracker):
         self.tags = tags
         self.config = config or {}
         self._wandb = wandb
-        self._run = None
 
     def log_params(self, params: dict[str, float | int | str]) -> None:
         """
@@ -612,7 +643,7 @@ class WandbTracker(ExperimentTracker):
         params : dict[str, float | int | str]
             Hyperparameter names and their values.
         """
-        if self.mode == "develop" and self._run:
+        if self._should_log():
             self._run.config.update(params)
 
     def log_metrics(self, metrics: dict[str, float | int | str], step: int | None = None) -> None:
@@ -626,7 +657,7 @@ class WandbTracker(ExperimentTracker):
         step : int or None, optional
             Training step number. Used for the x-axis in wandb charts.
         """
-        if self.mode == "develop" and self._run:
+        if self._should_log():
             self._run.log(metrics, step=step)
 
     def log_file(self, filename: str, artifact_id: str) -> None:
@@ -640,7 +671,7 @@ class WandbTracker(ExperimentTracker):
         artifact_id : str
             Name for the artifact in wandb.
         """
-        if self.mode == "develop" and self._run:
+        if self._should_log():
             artifact = self._wandb.Artifact(artifact_id, type="file")
             artifact.add_file(filename)
             self._run.log_artifact(artifact)
@@ -656,7 +687,7 @@ class WandbTracker(ExperimentTracker):
         artifact_id : str
             Name for the artifact in wandb.
         """
-        if self.mode == "develop" and self._run:
+        if self._should_log():
             import os
             import tempfile
 
@@ -709,9 +740,9 @@ class WandbTracker(ExperimentTracker):
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        """Finish the wandb run and sync all data."""
+        """Finish the wandb run and sync all data, with exit code 1 if the block raised."""
         if self.mode == "develop" and self._run:
-            self._run.finish()
+            self._run.finish(exit_code=1 if exc_type is not None else 0)
             self._run = None
 
 
@@ -780,6 +811,9 @@ def create_tracker(
     ------
     ValueError
         If ``backend`` is not one of the supported values.
+    TypeError
+        If a keyword argument is not accepted by the chosen backend
+        (e.g. a misspelled ``bucket=`` instead of ``bucket_name=``).
 
     Examples
     --------
@@ -800,37 +834,13 @@ def create_tracker(
     ...     tracking_uri="http://localhost:5000",
     ... )
     """
-    if backend == "vertex_ai":
-        return VertexAITracker(
-            experiment_name=experiment_name,
-            run_name=run_name,
-            mode=mode,
-            project=kwargs.get("project"),
-            location=kwargs.get("location"),
-            bucket_name=kwargs.get("bucket_name"),
-            experiment_description=kwargs.get("experiment_description"),
-            experiment_tensorboard=kwargs.get("experiment_tensorboard", False),
-            dotenv_path=dotenv_path,
-        )
-    elif backend == "mlflow":
-        return MLflowTracker(
-            experiment_name=experiment_name,
-            run_name=run_name,
-            mode=mode,
-            tracking_uri=kwargs.get("tracking_uri"),
-            artifact_location=kwargs.get("artifact_location"),
-            tags=kwargs.get("tags"),
-            dotenv_path=dotenv_path,
-        )
-    elif backend == "wandb":
-        return WandbTracker(
-            experiment_name=experiment_name,
-            run_name=run_name,
-            mode=mode,
-            entity=kwargs.get("entity"),
-            tags=kwargs.get("tags"),
-            config=kwargs.get("config"),
-            dotenv_path=dotenv_path,
-        )
-    else:
+    trackers = {"vertex_ai": VertexAITracker, "mlflow": MLflowTracker, "wandb": WandbTracker}
+    if backend not in trackers:
         raise ValueError(f"Unknown backend: {backend}. Choose 'vertex_ai', 'mlflow', or 'wandb'.")
+    return trackers[backend](
+        experiment_name=experiment_name,
+        run_name=run_name,
+        mode=mode,
+        dotenv_path=dotenv_path,
+        **kwargs,
+    )

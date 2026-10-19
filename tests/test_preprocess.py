@@ -5,7 +5,8 @@ import pandas as pd
 import pytest
 from sklearn.datasets import make_classification
 from sklearn.exceptions import NotFittedError
-from src.caketool.model.preprocess import (
+
+from caketool.model.preprocess import (
     ColinearFeatureRemover,
     FeatureEncoder,
     FeatureRemover,
