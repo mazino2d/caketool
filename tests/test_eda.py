@@ -894,3 +894,76 @@ def test_public_api_importable():
     assert callable(summarize_outliers)
     assert callable(summarize_duplicates)
     assert EDAConfig is not None
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for degenerate inputs
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.filterwarnings("ignore")
+def test_rank_associations_nan_association_sorted_last():
+    rng = np.random.default_rng(0)
+    target = rng.normal(size=200)
+    df = pd.DataFrame(
+        {
+            "target": target,
+            "const": np.ones(200),
+            "a": target * 2 + rng.normal(scale=0.1, size=200),
+            "b": rng.normal(size=200),
+        }
+    )
+    res = rank_associations(df, target="target", cat_cols=[])
+    assert sorted(res["feature"]) == ["a", "b", "const"]
+    assert res["feature"].iloc[0] == "a"
+    assert res["feature"].iloc[-1] == "const"
+
+
+def test_rank_associations_numeric_target_uses_eta_for_categorical():
+    rng = np.random.default_rng(1)
+    df = pd.DataFrame({"target": rng.normal(size=300), "noise": rng.choice(["x", "y"], size=300)})
+    res = rank_associations(df, target="target", num_cols=[], cat_cols=["noise"])
+    row = res.iloc[0]
+    assert row["method"] == "eta"
+    assert row["association"] < 0.3
+
+
+def test_plot_scatter_constant_x_does_not_crash():
+    df = pd.DataFrame({"x": [1.0] * 10, "y": np.arange(10, dtype=float)})
+    fig = plot_scatter(df, x="x", y="y")
+    assert isinstance(fig, go.Figure)
+
+
+def test_plot_numeric_distribution_kde_constant_series():
+    fig = plot_numeric_distribution(pd.Series([3.0] * 20, name="c"), kde=True)
+    assert isinstance(fig, go.Figure)
+
+
+def test_profile_handles_bool_column():
+    res = profile(pd.DataFrame({"flag": [True, False, True, True]}))
+    assert res.loc[0, "mean"] == 0.75
+
+
+def test_plot_time_series_trend_uses_time_values():
+    # Irregular spacing: row order would give r=1.0; actual time values give a weaker trend.
+    dates = pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03", "2024-12-31", "2025-01-01", "2025-01-02"])
+    df = pd.DataFrame({"date": dates, "v": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]})
+    fig = plot_time_series(df, x="date", y="v")
+    r = float(fig.layout.title.text.split("r=")[1].split(" ")[0])
+    assert r < 0.999
+
+
+def test_plot_correlations_cluster_groups_correlated_columns():
+    rng = np.random.default_rng(2)
+    base = rng.normal(size=200)
+    df = pd.DataFrame(
+        {
+            "a": base,
+            "z": rng.normal(size=200),
+            "b": base + rng.normal(scale=0.05, size=200),
+            "c": -base + rng.normal(scale=0.05, size=200),
+        }
+    )
+    order = list(plot_correlations(df, cluster=True).data[0].x)
+    # a, b, c are strongly (anti-)correlated and should be adjacent; z sits at an end.
+    assert order.index("z") in (0, len(order) - 1)
