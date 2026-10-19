@@ -218,7 +218,7 @@ def plot_numeric_distribution(
             )
         )
 
-        if kde:
+        if kde and clipped.nunique() > 1:
             from scipy.stats import gaussian_kde
 
             arr = clipped.values.astype(float)
