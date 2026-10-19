@@ -35,8 +35,7 @@ jobs:
       python-version: ${{ matrix.python-version }}
       install: pip install -e ".[dev,all]"
       run: |
-        pip list 2>/dev/null | grep -iE "^(numpy|pandas|scikit-learn|xgboost|scipy|shap|category.encoders|polars) " | tr -s ' ' | sed 's/^/::warning::/'
-        pytest tests/ -q --tb=line -rfE -p no:cacheprovider > pytest.out 2>&1 || { grep -E "^(FAILED|ERROR)|^/.*Error|^E " pytest.out | head -40 | sed 's/^/::error::/'; tail -3 pytest.out | sed 's/^/::error::/'; exit 1; }
+        pytest tests/ -v --tb=short
 
   lint:
     if: github.event_name == 'pull_request'
