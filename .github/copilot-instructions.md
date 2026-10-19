@@ -29,14 +29,14 @@ pdoc src/caketool   # Preview at http://localhost:8080
 |--------|---------|
 | `eda/` | Exploratory data analysis: overview, univariate, bivariate plots via Plotly |
 | `calibration/` | Score calibration via statistical transformations |
-| `feature/` | Feature engineering: encoding, removal, infinity handling |
-| `metric/` | Evaluation metrics: gini, PSI, sklearn wrappers |
-| `model/` | Model wrappers: BoostTree (XGBoost), VotingModel, ensembles |
+| `feature/` | Window-based aggregate features (pandas, polars, Spark, BigFrames) |
+| `metric/` | Evaluation metrics: association, gini, PSI, sklearn re-exports |
+| `model/` | XGBoost classifiers (BinaryBoostTree, MulticlassBoostTree), ensembles, preprocessing |
 | `explainability/` | SHAP-based model-agnostic explainability: PermutationExplainer |
-| `monitor/` | Drift detection, BigQuery-based monitoring |
+| `monitor/` | Drift detection (adversarial classification) |
 | `report/` | Risk scoring and probability band analysis |
 | `experiment/` | Experiment tracking: MLflow, Vertex AI, W&B |
-| `utils/` | Helpers for arrays, strings, numbers, phone parsing, BigQuery |
+| `utils/` | Dynamic imports and optional-dependency checks |
 
 ## Code Conventions
 
@@ -87,8 +87,8 @@ from .feature_remover import ColinearFeatureRemover as ColinearFeatureRemover
 ## Testing Patterns
 
 - Tests in `tests/` using pytest
-- Import source modules using `src.` prefix:
+- Import the package directly (pytest adds `src/` to the path via `pythonpath`):
   ```python
-  from src.caketool.some.module import SomeClass
+  from caketool.some.module import SomeClass
   ```
 - Use class-based test grouping (`class TestFoo`) with pytest fixtures
