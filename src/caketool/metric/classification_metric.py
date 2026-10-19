@@ -5,9 +5,10 @@ from sklearn.metrics import roc_auc_score
 def gini(y_actual: np.ndarray, y_pred: np.ndarray) -> float:
     """Calculate the Gini coefficient for a binary classifier.
 
-    Defined as ``GINI = 2 * ROC_AUC - 1``, which maps ROC-AUC from [0.5, 1.0]
-    to a Gini range of [0, 1].  A Gini of 0 corresponds to a random model
-    (AUC = 0.5) and 1 to a perfect model (AUC = 1.0).
+    Defined as ``GINI = 2 * ROC_AUC - 1``, which maps ROC-AUC from [0, 1]
+    to a Gini range of [-1, 1].  A Gini of 0 corresponds to a random model
+    (AUC = 0.5), 1 to a perfect model (AUC = 1.0), and a negative Gini to a
+    model that ranks worse than random (typically inverted scores).
 
     Parameters
     ----------
@@ -19,7 +20,7 @@ def gini(y_actual: np.ndarray, y_pred: np.ndarray) -> float:
     Returns
     -------
     float
-        Gini coefficient in the range [0, 1].
+        Gini coefficient in the range [-1, 1].
 
     Examples
     --------

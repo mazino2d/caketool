@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -122,3 +124,43 @@ class TestAdversarialModel:
         result = model.get_drift_features()
 
         assert abs(result["gain_pct"].sum() - 1.0) < 1e-6
+
+
+class TestAdversarialModelLabelColumn:
+    """Inputs that already carry a ``label`` column must not leak it into the features."""
+
+    @pytest.fixture
+    def labelled_pair(self):
+        rng = np.random.default_rng(0)
+        n = 600
+        df1 = pd.DataFrame({"x": rng.normal(size=n), "label": rng.integers(0, 2, n)})
+        df2 = pd.DataFrame({"x": rng.normal(size=n), "label": rng.integers(0, 2, n)})
+        return df1, df2
+
+    def test_label_not_used_as_feature(self, labelled_pair):
+        with pytest.warns(UserWarning, match="label"):
+            model = AdversarialModel(random_state=0).fit(*labelled_pair)
+        assert model.feature_names_ == ["x"]
+        # Same distribution: the model cannot separate the datasets
+        assert model.auc_score < 0.7
+
+    def test_explicit_label_feature_raises(self, labelled_pair):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with pytest.raises(ValueError, match="adversarial target"):
+                AdversarialModel().fit(*labelled_pair, features=["x", "label"])
+
+    def test_groups_col_excluded_from_default_features(self, reference_df, no_drift_df):
+        model = AdversarialModel(random_state=0).fit(reference_df, no_drift_df, groups_col=["feature_c"])
+        assert model.feature_names_ == ["feature_a", "feature_b"]
+
+
+class TestAdversarialModelReproducibility:
+    def test_feature_names_sorted(self, reference_df, no_drift_df):
+        model = AdversarialModel(random_state=0).fit(reference_df[["feature_c", "feature_a"]], no_drift_df)
+        assert model.feature_names_ == ["feature_a", "feature_c"]
+
+    def test_random_state_gives_same_auc(self, reference_df, drift_df):
+        auc1 = AdversarialModel(random_state=7).fit(reference_df, drift_df).auc_score
+        auc2 = AdversarialModel(random_state=7).fit(reference_df, drift_df).auc_score
+        assert auc1 == auc2

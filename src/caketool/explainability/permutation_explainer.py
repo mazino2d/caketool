@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from sklearn.base import BaseEstimator
+from sklearn.base import BaseEstimator, is_regressor
 
 from caketool.utils.lib_utils import require_dependencies
 
@@ -31,12 +31,20 @@ class PermutationExplainer(ModelExplainer, BaseEstimator):
     n_background_samples : int, optional
         Number of samples to draw from background_data (or fit data when
         background_data is None). Defaults to 100.
+    class_index : int, optional
+        Output column to explain when the model predicts probabilities. If
+        None, the positive class (column 1) is used for binary models, and a
+        multiclass model raises ``ValueError``.
+    max_evals : int, optional
+        Maximum number of model evaluations per sample. If None, uses
+        ``max(500, 2 * n_features + 1)``, the minimum the permutation
+        algorithm needs for wide inputs.
 
     Attributes
     ----------
     shap_values_ : np.ndarray of shape (n_samples, n_features)
-        SHAP values computed after calling fit. For binary classification,
-        values correspond to the positive class.
+        SHAP values computed after calling fit. For classifiers, values
+        correspond to ``class_index`` (the positive class for binary models).
     feature_names_ : list of str
         Feature names inferred from the input data (DataFrame columns or
         auto-generated as f0, f1, ...).
@@ -58,21 +66,41 @@ class PermutationExplainer(ModelExplainer, BaseEstimator):
         model,
         background_data=None,
         n_background_samples: int = 100,
+        class_index: int | None = None,
+        max_evals: int | None = None,
     ) -> None:
         self.model = model
         self.background_data = background_data
         self.n_background_samples = n_background_samples
+        self.class_index = class_index
+        self.max_evals = max_evals
         self._is_fitted = False
 
     def _check_fitted(self) -> None:
         if not self._is_fitted:
             raise RuntimeError(_NOT_FITTED_MSG)
 
+    def _uses_proba(self) -> bool:
+        """Whether the model's probabilities (rather than ``predict``) are explained."""
+        # A regressor may expose predict_proba only to raise; never call it. Models that do not
+        # declare an estimator type but have predict_proba (duck-typed classifiers) keep using it.
+        return hasattr(self.model, "predict_proba") and not is_regressor(self.model)
+
     def _get_predict_fn(self):
-        """Return predict_proba if available, else predict."""
-        if hasattr(self.model, "predict_proba"):
+        """Return predict_proba for classifiers, else predict."""
+        if self._uses_proba():
             return self.model.predict_proba
         return self.model.predict
+
+    def _resolve_class_index(self, n_outputs: int) -> int:
+        """Return the output column to explain for a model with ``n_outputs`` columns."""
+        if self.class_index is not None:
+            if not 0 <= self.class_index < n_outputs:
+                raise ValueError(f"class_index {self.class_index} is out of range for {n_outputs} outputs.")
+            return self.class_index
+        if n_outputs > 2:
+            raise ValueError(f"Model has {n_outputs} output classes; pass class_index to choose which to explain.")
+        return n_outputs - 1
 
     @require_dependencies("shap")
     def fit(self, X) -> PermutationExplainer:
@@ -97,6 +125,9 @@ class PermutationExplainer(ModelExplainer, BaseEstimator):
             self._X_fit = pd.DataFrame(X, columns=self.feature_names_)
 
         predict_fn = self._get_predict_fn()
+        if self._uses_proba() and hasattr(self.model, "classes_"):
+            # Fail before the (expensive) SHAP computation
+            self._resolve_class_index(len(self.model.classes_))
 
         if self.background_data is not None:
             n = min(self.n_background_samples, len(self.background_data))
@@ -105,24 +136,28 @@ class PermutationExplainer(ModelExplainer, BaseEstimator):
             n = min(self.n_background_samples, len(self._X_fit))
             bg = shap.sample(self._X_fit, n)
 
+        max_evals = self.max_evals or max(500, 2 * len(self.feature_names_) + 1)
         self.explainer_ = shap.PermutationExplainer(predict_fn, bg)
-        explanation = self.explainer_(self._X_fit)
+        explanation = self.explainer_(self._X_fit, max_evals=max_evals)
 
         raw_values = explanation.values
 
-        # Normalise binary classification: take positive-class SHAP values
+        # Multi-output (classifier probabilities): keep the selected class only
+        idx = None
         if isinstance(raw_values, list):
-            raw_values = raw_values[1] if len(raw_values) == 2 else raw_values[0]
+            idx = self._resolve_class_index(len(raw_values))
+            raw_values = raw_values[idx]
         elif isinstance(raw_values, np.ndarray) and raw_values.ndim == 3:
-            raw_values = raw_values[:, :, 1]
+            idx = self._resolve_class_index(raw_values.shape[2])
+            raw_values = raw_values[:, :, idx]
 
         self.shap_values_ = np.array(raw_values)
 
         # Extract base value from first sample (same for all samples)
         base = np.array(explanation.base_values)
         if base.ndim == 2:
-            # (n_samples, n_classes) — binary classification: take positive class
-            self.base_value_ = float(base[0, 1]) if base.shape[1] >= 2 else float(base[0, 0])
+            # (n_samples, n_outputs): take the selected class
+            self.base_value_ = float(base[0, idx if idx is not None else self._resolve_class_index(base.shape[1])])
         elif base.ndim == 1:
             self.base_value_ = float(base[0])
         else:

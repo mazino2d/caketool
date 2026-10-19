@@ -133,7 +133,7 @@ class TestAssociationCramersV:
     def test_perfect_association(self):
         cat = pd.Series(["A"] * 50 + ["B"] * 50)
         v, p = association(cat, cat, method="cramers_v")
-        assert v > 0.95  # Yates' continuity correction on 2×2 table prevents exact 1.0
+        assert v == pytest.approx(1.0)
         assert p < 0.05
 
     def test_independent_columns_low_v(self):
@@ -153,3 +153,48 @@ class TestAssociationErrors:
     def test_invalid_method_raises(self, num_df):
         with pytest.raises(ValueError, match="method must be one of"):
             association(num_df["age"], num_df["income"], method="kendall")
+
+
+# ===========================================================================
+# association() — missing values and index alignment
+# ===========================================================================
+
+
+class TestAssociationRobustness:
+    def test_cramers_v_2x2_has_no_yates_correction(self):
+        # chi2 = 4 without correction -> V = sqrt(4 / 100) = 0.2
+        x = pd.Series(["a"] * 50 + ["b"] * 50)
+        y = pd.Series(["u"] * 30 + ["v"] * 20 + ["u"] * 20 + ["v"] * 30)
+        v, _ = association(x, y, method="cramers_v")
+        assert v == pytest.approx(0.2)
+
+    def test_cramers_v_ignores_index(self):
+        x = pd.Series(["a"] * 50 + ["b"] * 50)
+        y = pd.Series(["u"] * 50 + ["v"] * 50, index=range(100, 200))
+        v, _ = association(x, y, method="cramers_v")
+        assert v == pytest.approx(1.0)
+
+    def test_cramers_v_drops_missing_pairs(self):
+        x = pd.Series(["a", "a", "b", "b", None, None])
+        y = pd.Series(["u", "u", "v", "v", "u", "v"])
+        v, _ = association(x, y, method="cramers_v")
+        assert v == pytest.approx(1.0)
+
+    def test_eta_drops_missing_pairs(self):
+        cat = pd.Series(["a", "b", None, "a", "b", "a"])
+        num = pd.Series([1.0, 2.0, 3.0, 1.2, 2.1, np.nan])
+        eta, p = association(cat, num, method="eta")
+        assert np.isfinite(eta) and np.isfinite(p)
+        assert eta > 0.9
+
+    @pytest.mark.parametrize("method", ["pearson", "spearman"])
+    def test_correlation_drops_missing_pairs(self, method):
+        x = np.array([1.0, 2.0, np.nan, 4.0, 5.0])
+        y = np.array([2.0, 4.0, 6.0, np.nan, 10.0])
+        r, p = association(x, y, method=method)
+        assert r == pytest.approx(1.0)
+        assert np.isfinite(p)
+
+    def test_length_mismatch_raises(self):
+        with pytest.raises(ValueError, match="same length"):
+            association(np.arange(3.0), np.arange(4.0), method="pearson")

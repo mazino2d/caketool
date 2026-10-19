@@ -123,3 +123,54 @@ class TestPsi:
 
         assert np.isfinite(result_5)
         assert np.isfinite(result_20)
+
+
+class TestPsiEdgeCases:
+    @pytest.mark.parametrize("bucket_type", ["bins", "quantiles"])
+    def test_values_outside_expected_range_are_counted(self, bucket_type):
+        rng = np.random.default_rng(0)
+        expected = rng.normal(0, 1, 2000)
+        # Half of the actual population moved far outside the expected range
+        actual = np.concatenate([rng.normal(0, 1, 1000), np.full(1000, 100.0)])
+        assert psi(expected, actual, bucket_type=bucket_type) > 0.25
+
+    def test_values_below_expected_range_are_counted(self):
+        rng = np.random.default_rng(0)
+        expected = rng.uniform(0, 1, 2000)
+        actual = np.concatenate([rng.uniform(0, 1, 1000), np.full(1000, -5.0)])
+        assert psi(expected, actual) > 0.25
+
+    def test_zero_inflated_feature_does_not_fail(self):
+        rng = np.random.default_rng(0)
+        data = np.concatenate([np.zeros(800), rng.uniform(1, 5, 200)])
+        assert psi(data, data.copy()) == pytest.approx(0.0, abs=1e-6)
+
+    def test_constant_feature(self):
+        data = np.ones(100)
+        assert psi(data, data.copy()) == pytest.approx(0.0, abs=1e-6)
+
+    def test_nan_values_go_to_missing_bin(self):
+        rng = np.random.default_rng(0)
+        expected = rng.normal(0, 1, 1000)
+        actual = expected.copy()
+        actual[:500] = np.nan
+        result = psi(expected, actual)
+        assert np.isfinite(result)
+        assert result > 0.25
+
+    def test_same_nan_share_is_stable(self):
+        rng = np.random.default_rng(0)
+        expected = rng.normal(0, 1, 2000)
+        actual = rng.normal(0, 1, 2000)
+        expected[:200] = np.nan
+        actual[:200] = np.nan
+        assert psi(expected, actual) < 0.1
+
+    def test_invalid_bucket_type_raises(self):
+        with pytest.raises(ValueError, match="bucket_type"):
+            psi(np.arange(10.0), np.arange(10.0), bucket_type="deciles")
+
+    def test_custom_eps(self):
+        expected = np.array([0.0, 0.5, 0.5])
+        actual = np.array([0.5, 0.5, 0.0])
+        assert psi_from_distribution(expected, actual, eps=1e-3) < psi_from_distribution(expected, actual, eps=1e-6)
