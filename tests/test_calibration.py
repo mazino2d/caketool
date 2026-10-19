@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
-from src.caketool.calibration import calibrate_score_to_normal
+import pytest
+from src.caketool.calibration import NormalScoreCalibrator, calibrate_score_to_normal
 
 
 class TestCalibrateScoreToNormal:
@@ -93,3 +94,44 @@ class TestCalibrateScoreToNormal:
 
         # Middle value should be close to 0.5
         assert 0.49 < result[1] < 0.51
+
+    def test_docstring_examples(self):
+        """Docstring examples match the actual output."""
+        np.testing.assert_allclose(calibrate_score_to_normal([0.1, 0.5, 0.9]), [0.2173, 0.5, 0.7827], atol=1e-4)
+        assert calibrate_score_to_normal(0.99) == pytest.approx(0.9110, abs=1e-4)
+
+    def test_standard_mode_constant_scores_not_nan(self):
+        """std = 0 (constant scores or a single score) must not produce NaN."""
+        np.testing.assert_allclose(calibrate_score_to_normal([0.3, 0.3, 0.3], standard=True), [0.5, 0.5, 0.5])
+        assert calibrate_score_to_normal(0.3, standard=True) == pytest.approx(0.5)
+
+
+class TestNormalScoreCalibrator:
+    """Tests for the fit/transform calibrator."""
+
+    def test_matches_standard_mode_on_reference(self):
+        scores = np.array([0.1, 0.3, 0.5, 0.7, 0.9])
+        calibrator = NormalScoreCalibrator().fit(scores)
+        np.testing.assert_allclose(calibrator.transform(scores), calibrate_score_to_normal(scores, standard=True))
+
+    def test_transform_is_independent_of_batch(self):
+        calibrator = NormalScoreCalibrator().fit(np.linspace(0.05, 0.95, 50))
+        batch = calibrator.transform(np.array([0.2, 0.4, 0.6]))
+        single = calibrator.transform(np.array([0.4]))
+        assert batch[1] == pytest.approx(single[0])
+
+    def test_constant_reference_not_nan(self):
+        calibrator = NormalScoreCalibrator().fit([0.4, 0.4, 0.4])
+        result = calibrator.transform([0.4, 0.6])
+        assert np.all(np.isfinite(result))
+        assert result[0] == pytest.approx(0.5)
+
+    def test_transform_before_fit_raises(self):
+        with pytest.raises(RuntimeError, match="not been fitted"):
+            NormalScoreCalibrator().transform([0.5])
+
+    def test_fit_transform(self):
+        scores = np.array([0.2, 0.5, 0.8])
+        result = NormalScoreCalibrator().fit_transform(scores)
+        assert result.shape == scores.shape
+        assert np.all(np.diff(result) > 0)

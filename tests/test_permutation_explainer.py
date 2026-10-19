@@ -2,10 +2,13 @@
 
 from unittest.mock import patch
 
+import numpy as np
 import pandas as pd
 import pytest
+from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.datasets import make_classification
 from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.linear_model import LinearRegression, LogisticRegression
 from src.caketool.explainability import ModelExplainer, PermutationExplainer
 
 # ---------------------------------------------------------------------------
@@ -212,3 +215,71 @@ class TestShowMethods:
         e = PermutationExplainer(model=fitted_model)
         with pytest.raises(RuntimeError, match="has not been fitted"):
             e.show_dependence("f0")
+
+
+# ---------------------------------------------------------------------------
+# Model types: regressors, wide inputs, multiclass
+# ---------------------------------------------------------------------------
+
+
+class _RegressorWithProba(RegressorMixin, BaseEstimator):
+    """Regressor exposing a ``predict_proba`` that cannot be used."""
+
+    def fit(self, X, y):
+        self.model_ = LinearRegression().fit(X, y)
+        return self
+
+    def predict(self, X):
+        return self.model_.predict(X)
+
+    def predict_proba(self, X):
+        raise NotImplementedError("regressor")
+
+
+class TestPermutationExplainerModelTypes:
+    def test_regressor_uses_predict(self, dataset):
+        X, y = dataset
+        model = _RegressorWithProba().fit(X, y.astype(float))
+        e = PermutationExplainer(model=model, n_background_samples=20).fit(X[:10])
+        assert e.shap_values_.shape == (10, X.shape[1])
+
+    def test_wide_input_above_default_max_evals(self):
+        rng = np.random.default_rng(0)
+        X = pd.DataFrame(rng.normal(size=(20, 300)), columns=[f"f{i}" for i in range(300)])
+        y = (X["f0"] > 0).astype(int)
+        model = LogisticRegression().fit(X, y)
+        e = PermutationExplainer(model=model, n_background_samples=5).fit(X[:2])
+        assert e.shap_values_.shape == (2, 300)
+
+    @pytest.fixture(scope="class")
+    def multiclass(self):
+        X, y = make_classification(n_samples=150, n_features=5, n_informative=3, n_classes=3, random_state=0)
+        X = pd.DataFrame(X, columns=[f"f{i}" for i in range(5)])
+        return X, LogisticRegression(max_iter=500).fit(X, y)
+
+    def test_multiclass_requires_class_index(self, multiclass):
+        X, model = multiclass
+        with pytest.raises(ValueError, match="class_index"):
+            PermutationExplainer(model=model).fit(X[:5])
+
+    def test_multiclass_explains_selected_class(self, multiclass):
+        X, model = multiclass
+        e = PermutationExplainer(model=model, background_data=X, n_background_samples=150, class_index=2).fit(X[:5])
+        assert e.shap_values_.shape == (5, 5)
+        # Additivity: base value + SHAP values = predicted probability of the selected class
+        np.testing.assert_allclose(
+            e.base_value_ + e.shap_values_.sum(axis=1), model.predict_proba(X[:5])[:, 2], atol=1e-6
+        )
+
+    def test_class_index_out_of_range_raises(self, multiclass):
+        X, model = multiclass
+        with pytest.raises(ValueError, match="out of range"):
+            PermutationExplainer(model=model, class_index=5).fit(X[:5])
+
+    def test_binary_class_index_zero(self, dataset, fitted_model):
+        X, _ = dataset
+        e = PermutationExplainer(model=fitted_model, background_data=X, n_background_samples=200, class_index=0)
+        e.fit(X[:5])
+        np.testing.assert_allclose(
+            e.base_value_ + e.shap_values_.sum(axis=1), fitted_model.predict_proba(X[:5])[:, 0], atol=1e-6
+        )
