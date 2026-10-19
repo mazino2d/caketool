@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
-from src.caketool.calibration import calibrate_score_to_normal
+
+from caketool.calibration import calibrate_score_to_normal
 
 
 class TestCalibrateScoreToNormal:
