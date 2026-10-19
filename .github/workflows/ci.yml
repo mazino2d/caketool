@@ -23,6 +23,20 @@ jobs:
         ruff check src/ tests/
         pytest tests/ -v --tb=short
 
+  # Extra Python versions. Kept as a separate job so the required "ci / gate"
+  # check (Python 3.10, the minimum supported version) keeps its name.
+  ci-compat:
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    uses: mazino2d/github-workflows/.github/workflows/python-ci.yml@v1
+    with:
+      python-version: ${{ matrix.python-version }}
+      install: pip install -e ".[dev,all]"
+      run: |
+        pytest tests/ -v --tb=short
+
   lint:
     if: github.event_name == 'pull_request'
     uses: mazino2d/github-workflows/.github/workflows/lint.yml@v1

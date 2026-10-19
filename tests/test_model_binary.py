@@ -4,10 +4,11 @@ import numpy as np
 import pandas as pd
 import pytest
 from sklearn.datasets import make_classification
-from src.caketool.model.base.ensemble import BaseEnsemble
-from src.caketool.model.classification.binary import BinaryBoostTree
-from src.caketool.model.classification.multiclass import MulticlassBoostTree
-from src.caketool.model.config import ModelConfig
+
+from caketool.model.base.ensemble import BaseEnsemble
+from caketool.model.classification.binary import BinaryBoostTree
+from caketool.model.classification.multiclass import MulticlassBoostTree
+from caketool.model.config import ModelConfig
 
 # ---------------------------------------------------------------------------
 # Fixtures

@@ -2,7 +2,8 @@
 
 import numpy as np
 import pytest
-from src.caketool.metric.stability_metric import psi, psi_from_distribution
+
+from caketool.metric.stability_metric import psi, psi_from_distribution
 
 
 class TestPsiFromDistribution:

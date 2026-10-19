@@ -3,7 +3,8 @@
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator
-from src.caketool.model.base.voting_model import VotingModel
+
+from caketool.model.base.voting_model import VotingModel
 
 
 class _ConstantEstimator(BaseEstimator):

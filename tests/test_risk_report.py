@@ -3,7 +3,8 @@
 import numpy as np
 import pandas as pd
 import pytest
-from src.caketool.report.risk_report import decribe_risk_score
+
+from caketool.report.risk_report import decribe_risk_score
 
 
 @pytest.fixture
