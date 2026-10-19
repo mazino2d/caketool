@@ -56,7 +56,8 @@ class TestGenerateFeaturesBasic:
 
         assert "ft_all_category_lifetime_cnt" in result.columns
         assert "ft_all_category_lifetime_nunique" in result.columns
-        assert "ft_all_category_lifetime_entropy" in result.columns
+        assert "ft_all_category_lifetime_unique_ratio" in result.columns
+        assert "ft_all_category_lifetime_entropy" not in result.columns
 
     def test_boolean_cols_lifetime(self, sample_df):
         """Test boolean column aggregations."""
@@ -316,3 +317,166 @@ class TestGenerateFeaturesPolars:
 
         assert "user_id" in result.columns
         assert "ft_all_amount_lifetime_sum" in result.columns
+
+
+def _event_df():
+    """Events for two users with nulls, a numeric-like key and look-alike key values."""
+    return pd.DataFrame(
+        {
+            "user_id": ["u1", "u1", "u1", "u1", "u2", "u2", "u2"],
+            "report_date": pd.to_datetime(
+                ["2024-01-01", "2024-01-09", "2024-01-12", "2024-01-14", "2024-01-03", "2024-01-10", "2024-01-11"]
+            ),
+            "fs_event_timestamp": pd.to_datetime(["2024-01-15"] * 7),
+            "amount": [10.0, 20.0, 35.0, 40.0, 5.0, None, 15.0],
+            "product": ["card", "credit_card", "card", None, "Card", "credit_card", "credit_card"],
+            "merchant": ["m1", "m2", None, "m1", "m3", "m3", None],
+            "is_active": pd.array([True, None, False, True, True, True, None], dtype="boolean"),
+            "event_date": pd.to_datetime(
+                ["2024-01-01", "2024-01-09", "2024-01-12", "2024-01-14", "2024-01-03", "2024-01-10", "2024-01-11"]
+            ),
+        }
+    )
+
+
+class TestGenerateFeaturesLeakage:
+    """Lifetime features must only use history before the snapshot."""
+
+    @pytest.mark.parametrize("backend", ["pandas", "polars"])
+    def test_future_rows_excluded_from_lifetime(self, backend):
+        df = pd.DataFrame(
+            {
+                "user_id": ["u1", "u1", "u1"],
+                "report_date": pd.to_datetime(["2024-01-01", "2024-01-15", "2024-03-01"]),
+                "fs_event_timestamp": pd.to_datetime(["2024-01-15"] * 3),
+                "amount": [10.0, 1000.0, 5000.0],
+            }
+        )
+        if backend == "polars":
+            pl = pytest.importorskip("polars")
+            df = pl.from_pandas(df)
+
+        result = generate_features_by_window(df, numeric_cols=("amount",), backend=backend)
+        if backend == "polars":
+            result = result.to_pandas()
+
+        row = result.iloc[0]
+        # Rows on or after fs_event_timestamp are excluded, same as windowed features
+        assert row["ft_all_amount_lifetime_cnt"] == 1
+        assert row["ft_all_amount_lifetime_max"] == 10.0
+
+
+class TestGenerateFeaturesSchema:
+    """The output schema must not depend on the data."""
+
+    def test_std_kept_when_every_group_has_one_row(self):
+        df = pd.DataFrame(
+            {
+                "user_id": ["u1", "u2"],
+                "report_date": pd.to_datetime(["2024-01-01", "2024-01-02"]),
+                "fs_event_timestamp": pd.to_datetime(["2024-01-15"] * 2),
+                "amount": [10.0, 20.0],
+            }
+        )
+
+        result = generate_features_by_window(df, numeric_cols=("amount",), backend="pandas")
+
+        assert "ft_all_amount_lifetime_std" in result.columns
+        assert result["ft_all_amount_lifetime_std"].isna().all()
+        assert len(result) == 2
+
+
+class TestGenerateFeaturesKeyValues:
+    """Key column normalisation and pivot naming."""
+
+    @pytest.mark.parametrize("backend", ["pandas", "polars"])
+    def test_lookalike_key_values_not_swapped(self, backend):
+        df = _event_df()
+        if backend == "polars":
+            pl = pytest.importorskip("polars")
+            df = pl.from_pandas(df)
+
+        result = generate_features_by_window(df, key_cols=("product",), numeric_cols=("amount",), backend=backend)
+        if backend == "polars":
+            result = result.to_pandas()
+        u1 = result[result["user_id"] == "u1"].iloc[0]
+
+        assert u1["ft_card_amount_lifetime_sum"] == 45.0
+        assert u1["ft_credit_card_amount_lifetime_sum"] == 20.0
+        # Null keys are pivoted under the "null" label
+        assert u1["ft_null_amount_lifetime_sum"] == 40.0
+
+    @pytest.mark.parametrize("backend", ["pandas", "polars"])
+    def test_numeric_key_col(self, backend):
+        df = pd.DataFrame(
+            {
+                "user_id": ["u1", "u1", "u1"],
+                "report_date": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03"]),
+                "fs_event_timestamp": pd.to_datetime(["2024-01-15"] * 3),
+                "channel": [1, 2, 1],
+                "amount": [10.0, 20.0, 30.0],
+            }
+        )
+        if backend == "polars":
+            pl = pytest.importorskip("polars")
+            df = pl.from_pandas(df)
+
+        result = generate_features_by_window(df, key_cols=("channel",), numeric_cols=("amount",), backend=backend)
+        if backend == "polars":
+            result = result.to_pandas()
+
+        assert result.iloc[0]["ft_1_amount_lifetime_sum"] == 40.0
+        assert result.iloc[0]["ft_2_amount_lifetime_sum"] == 20.0
+
+
+class TestGenerateFeaturesNulls:
+    """Null values are skipped, not counted as a value."""
+
+    @pytest.mark.parametrize("backend", ["pandas", "polars"])
+    def test_null_handling(self, backend):
+        df = _event_df()
+        if backend == "polars":
+            pl = pytest.importorskip("polars")
+            df = pl.from_pandas(df)
+
+        result = generate_features_by_window(
+            df, string_cols=("merchant",), boolean_cols=("is_active",), backend=backend
+        )
+        if backend == "polars":
+            result = result.to_pandas()
+        u1 = result[result["user_id"] == "u1"].iloc[0]
+
+        assert u1["ft_all_merchant_lifetime_cnt"] == 3
+        assert u1["ft_all_merchant_lifetime_nunique"] == 2
+        assert u1["ft_all_merchant_lifetime_unique_ratio"] == pytest.approx(2 / 3)
+        assert u1["ft_all_is_active_lifetime_poscnt"] == 2
+        assert u1["ft_all_is_active_lifetime_posratio"] == pytest.approx(2 / 3)
+
+
+class TestGenerateFeaturesBackendConsistency:
+    """pandas and polars must produce the same features for the same input."""
+
+    def test_pandas_matches_polars(self):
+        pl = pytest.importorskip("polars")
+        df = _event_df()
+        kwargs = dict(
+            key_cols=("__all__", "product"),
+            lookback_days=(0, 7),
+            numeric_cols=("amount",),
+            string_cols=("merchant",),
+            date_cols=("event_date",),
+            boolean_cols=("is_active",),
+        )
+
+        pd_result = generate_features_by_window(df, backend="pandas", **kwargs)
+        pl_result = generate_features_by_window(pl.from_pandas(df), backend="polars", **kwargs).to_pandas()
+
+        assert sorted(pd_result.columns) == sorted(pl_result.columns)
+        pd_result = pd_result.sort_values("user_id").reset_index(drop=True)
+        pl_result = pl_result.sort_values("user_id").reset_index(drop=True)[pd_result.columns]
+        feature_cols = [c for c in pd_result.columns if c.startswith("ft_")]
+        pd.testing.assert_frame_equal(
+            pd_result[feature_cols].astype("float64"),
+            pl_result[feature_cols].astype("float64"),
+            check_exact=False,
+        )

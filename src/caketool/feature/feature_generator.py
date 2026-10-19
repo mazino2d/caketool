@@ -15,6 +15,9 @@ if TYPE_CHECKING:
 # Backend type alias
 Backend = Literal["spark", "bigframes", "pandas", "polars"]
 
+# Pivot label used for rows whose key column is null (same in every backend)
+NULL_KEY = "null"
+
 
 @require_dependencies("pyspark")
 def _generate_features_by_window_spark(
@@ -57,11 +60,13 @@ def _generate_features_by_window_spark(
 
     try:
         for key_col in key_cols:
-            key_df = temp_df.withColumn(key_col, F.lower(F.col(key_col)))
+            key_df = temp_df.withColumn(
+                key_col, F.coalesce(F.lower(F.col(key_col).cast(T.StringType())), F.lit(NULL_KEY))
+            )
             key_features = []
             for num_day in lookback_days:
                 if num_day == 0:
-                    window_df = key_df
+                    window_df = key_df.filter(F.col(report_date_col) < F.col(fs_event_timestamp))
                     lb_flag = "lifetime"
                 elif num_day > 0:
                     window_df = (
@@ -83,9 +88,9 @@ def _generate_features_by_window_spark(
                         [
                             F.min(value_col).alias(f"{value_col}_{lb_flag}_min"),
                             F.avg(value_col).alias(f"{value_col}_{lb_flag}_avg"),
-                            F.expr(f"percentile_approx({value_col}, 0.25)").alias(f"{value_col}_{lb_flag}_p25"),
-                            F.expr(f"percentile_approx({value_col}, 0.50)").alias(f"{value_col}_{lb_flag}_p50"),
-                            F.expr(f"percentile_approx({value_col}, 0.75)").alias(f"{value_col}_{lb_flag}_p75"),
+                            F.expr(f"percentile({value_col}, 0.25)").alias(f"{value_col}_{lb_flag}_p25"),
+                            F.expr(f"percentile({value_col}, 0.50)").alias(f"{value_col}_{lb_flag}_p50"),
+                            F.expr(f"percentile({value_col}, 0.75)").alias(f"{value_col}_{lb_flag}_p75"),
                             F.stddev(value_col).alias(f"{value_col}_{lb_flag}_std"),
                             F.max(value_col).alias(f"{value_col}_{lb_flag}_max"),
                             F.sum(value_col).alias(f"{value_col}_{lb_flag}_sum"),
@@ -99,7 +104,9 @@ def _generate_features_by_window_spark(
                         [
                             F.count(value_col).alias(f"{value_col}_{lb_flag}_cnt"),
                             F.countDistinct(value_col).alias(f"{value_col}_{lb_flag}_nunique"),
-                            (F.countDistinct(value_col) / F.count(value_col)).alias(f"{value_col}_{lb_flag}_entropy"),
+                            (F.countDistinct(value_col) / F.count(value_col)).alias(
+                                f"{value_col}_{lb_flag}_unique_ratio"
+                            ),
                         ]
                     )
 
@@ -119,8 +126,11 @@ def _generate_features_by_window_spark(
                 for bool_col in boolean_cols:
                     agg_exprs.extend(
                         [
-                            F.sum(F.when(F.col(bool_col), 1).otherwise(0)).alias(f"{bool_col}_{lb_flag}_poscnt"),
-                            F.avg(F.when(F.col(bool_col), 1).otherwise(0)).alias(f"{bool_col}_{lb_flag}_posratio"),
+                            F.coalesce(F.sum(F.col(bool_col).cast(T.IntegerType())), F.lit(0)).alias(
+                                f"{bool_col}_{lb_flag}_poscnt"
+                            ),
+                            # avg skips nulls, matching the pandas/polars backends
+                            F.avg(F.col(bool_col).cast(T.IntegerType())).alias(f"{bool_col}_{lb_flag}_posratio"),
                         ]
                     )
 
@@ -176,6 +186,7 @@ def _generate_features_by_window_bq(
     key_col_default: str = "all",
 ) -> bpd.DataFrame:
     """BigFrames (BigQuery) implementation for generate_features_by_window."""
+    import bigframes.pandas as bpd  # pyright: ignore[reportMissingImports]
 
     if len(numeric_cols) + len(string_cols) + len(date_cols) == 0:
         raise ValueError("At least one of numeric_cols, string_cols or date_cols must be provided")
@@ -189,12 +200,12 @@ def _generate_features_by_window_bq(
         temp_df["__all__"] = key_col_default
 
     for key_col in key_cols:
-        temp_df[key_col] = temp_df[key_col].str.lower()
+        temp_df[key_col] = temp_df[key_col].astype("string").str.lower().fillna(NULL_KEY)
         key_features = []
 
         for num_day in lookback_days:
             if num_day == 0:
-                window_df = temp_df.copy()
+                window_df = temp_df[temp_df[report_date_col] < temp_df[fs_event_timestamp]]
                 lb_flag = "lifetime"
             elif num_day > 0:
                 window_df = temp_df.copy()
@@ -239,12 +250,12 @@ def _generate_features_by_window_bq(
                         quantile_df = quantile_df.rename(columns={value_col: f"{value_col}_{lb_flag}_{name}"})
                         stats_df = stats_df.merge(quantile_df, on=group_cols, how="left")
 
-                # Calculate entropy for string/categorical columns
+                # Calculate distinct-value ratio for string/categorical columns
                 for value_col in string_cat_cols:
                     cnt_col = f"{value_col}_{lb_flag}_cnt"
                     nunique_col = f"{value_col}_{lb_flag}_nunique"
-                    entropy_col = f"{value_col}_{lb_flag}_entropy"
-                    stats_df[entropy_col] = stats_df[nunique_col] / stats_df[cnt_col]
+                    ratio_col = f"{value_col}_{lb_flag}_unique_ratio"
+                    stats_df[ratio_col] = stats_df[nunique_col] / stats_df[cnt_col]
 
                 # Calculate diff for numeric columns
                 for value_col in numeric_cols:
@@ -347,17 +358,20 @@ def _generate_features_by_window_pandas(
     all_features = []
 
     temp_df = df.copy()
+    # Nullable boolean so sum/mean skip missing values, as in the other backends
+    for bool_col in boolean_cols:
+        temp_df[bool_col] = temp_df[bool_col].astype("boolean")
 
     if "__all__" in key_cols:
         temp_df["__all__"] = key_col_default
 
     for key_col in key_cols:
-        temp_df[key_col] = temp_df[key_col].str.lower()
+        temp_df[key_col] = temp_df[key_col].astype("string").str.lower().fillna(NULL_KEY)
         key_features = []
 
         for num_day in lookback_days:
             if num_day == 0:
-                window_df = temp_df.copy()
+                window_df = temp_df[temp_df[report_date_col] < temp_df[fs_event_timestamp]]
                 lb_flag = "lifetime"
             elif num_day > 0:
                 window_df = temp_df.copy()
@@ -402,12 +416,12 @@ def _generate_features_by_window_pandas(
                         quantile_df = quantile_df.rename(columns={value_col: f"{value_col}_{lb_flag}_{name}"})
                         stats_df = stats_df.merge(quantile_df, on=group_cols, how="left")
 
-                # Calculate entropy for string/categorical columns
+                # Calculate distinct-value ratio for string/categorical columns
                 for value_col in string_cat_cols:
                     cnt_col = f"{value_col}_{lb_flag}_cnt"
                     nunique_col = f"{value_col}_{lb_flag}_nunique"
-                    entropy_col = f"{value_col}_{lb_flag}_entropy"
-                    stats_df[entropy_col] = stats_df[nunique_col] / stats_df[cnt_col]
+                    ratio_col = f"{value_col}_{lb_flag}_unique_ratio"
+                    stats_df[ratio_col] = stats_df[nunique_col] / stats_df[cnt_col]
 
                 # Calculate diff for numeric columns
                 for value_col in numeric_cols:
@@ -444,17 +458,13 @@ def _generate_features_by_window_pandas(
                 else:
                     stats_df = date_stats
 
-            # Pivot by key_col
+            # Pivot by key_col. unstack (unlike pivot_table) keeps all-NaN feature
+            # columns, so the output schema does not depend on the data.
             pivot_cols = [c for c in stats_df.columns if c not in group_cols]
-            pivot_df = stats_df.pivot_table(
-                index=[client_id_col, fs_event_timestamp],
-                columns=key_col,
-                values=pivot_cols,
-                aggfunc="first",
-            )
+            pivot_df = stats_df.set_index(group_cols)[pivot_cols].unstack(key_col)
 
-            # Flatten column names
-            pivot_df.columns = [f"{col[1]}_{col[0]}" if col[1] else col[0] for col in pivot_df.columns]
+            # Flatten column names to "{key_value}_{feature}"
+            pivot_df.columns = [f"{key_value}_{feature}" for feature, key_value in pivot_df.columns]
             pivot_df = pivot_df.reset_index()
 
             key_features.append(pivot_df)
@@ -538,11 +548,6 @@ def _generate_features_by_window_polars(
     pl.DataFrame
         DataFrame with generated features.
 
-    Warning
-    -------
-    Approximate aggregations (results may vary slightly):
-    - Percentiles (p25, p50, p75) use `quantile` method
-
     Examples
     --------
     >>> import polars as pl
@@ -569,12 +574,12 @@ def _generate_features_by_window_polars(
         temp_df = temp_df.with_columns(pl.lit(key_col_default).alias("__all__"))
 
     for key_col in key_cols:
-        temp_df = temp_df.with_columns(pl.col(key_col).str.to_lowercase())
+        temp_df = temp_df.with_columns(pl.col(key_col).cast(pl.Utf8).str.to_lowercase().fill_null(NULL_KEY))
         key_features = []
 
         for num_day in lookback_days:
             if num_day == 0:
-                window_df = temp_df.clone()
+                window_df = temp_df.filter(pl.col(report_date_col) < pl.col(fs_event_timestamp))
                 lb_flag = "lifetime"
             elif num_day > 0:
                 window_df = temp_df.with_columns(
@@ -601,20 +606,27 @@ def _generate_features_by_window_polars(
                         pl.col(value_col).std().alias(f"{value_col}_{lb_flag}_std"),
                         pl.col(value_col).count().alias(f"{value_col}_{lb_flag}_cnt"),
                         (pl.col(value_col).max() - pl.col(value_col).min()).alias(f"{value_col}_{lb_flag}_diff"),
-                        pl.col(value_col).quantile(0.25).alias(f"{value_col}_{lb_flag}_p25"),
-                        pl.col(value_col).quantile(0.50).alias(f"{value_col}_{lb_flag}_p50"),
-                        pl.col(value_col).quantile(0.75).alias(f"{value_col}_{lb_flag}_p75"),
+                        # Linear interpolation, matching pandas and Spark's exact percentile
+                        pl.col(value_col)
+                        .quantile(0.25, interpolation="linear")
+                        .alias(f"{value_col}_{lb_flag}_p25"),
+                        pl.col(value_col)
+                        .quantile(0.50, interpolation="linear")
+                        .alias(f"{value_col}_{lb_flag}_p50"),
+                        pl.col(value_col)
+                        .quantile(0.75, interpolation="linear")
+                        .alias(f"{value_col}_{lb_flag}_p75"),
                     ]
                 )
 
-            # String/categorical count aggregations
+            # String/categorical count aggregations (nulls are not counted as a value)
             for value_col in string_cat_cols:
                 agg_exprs.extend(
                     [
                         pl.col(value_col).count().alias(f"{value_col}_{lb_flag}_cnt"),
-                        pl.col(value_col).n_unique().alias(f"{value_col}_{lb_flag}_nunique"),
-                        (pl.col(value_col).n_unique() / pl.col(value_col).count()).alias(
-                            f"{value_col}_{lb_flag}_entropy"
+                        pl.col(value_col).drop_nulls().n_unique().alias(f"{value_col}_{lb_flag}_nunique"),
+                        (pl.col(value_col).drop_nulls().n_unique() / pl.col(value_col).count()).alias(
+                            f"{value_col}_{lb_flag}_unique_ratio"
                         ),
                     ]
                 )
@@ -632,10 +644,11 @@ def _generate_features_by_window_polars(
             for date_col in date_cols:
                 agg_exprs.extend(
                     [
-                        (pl.col(fs_event_timestamp) - pl.col(date_col).min())
+                        # .first(): a scalar per group, not a list of the repeated timestamp
+                        (pl.col(fs_event_timestamp).first() - pl.col(date_col).min())
                         .dt.total_days()
                         .alias(f"{date_col}_{lb_flag}_firstdatediff"),
-                        (pl.col(fs_event_timestamp) - pl.col(date_col).max())
+                        (pl.col(fs_event_timestamp).first() - pl.col(date_col).max())
                         .dt.total_days()
                         .alias(f"{date_col}_{lb_flag}_lastdatediff"),
                         (pl.col(date_col).max() - pl.col(date_col).min())
@@ -647,37 +660,25 @@ def _generate_features_by_window_polars(
             if agg_exprs:
                 stats_df = window_df.group_by(group_cols).agg(agg_exprs)
 
-                # Pivot by key_col
+                # Pivot by key_col, naming columns "{key_value}_{value}" (e.g. "all_amount_lifetime_sum")
+                # explicitly per key value instead of parsing polars' generated pivot names.
+                index_cols = [client_id_col, fs_event_timestamp]
                 value_cols = [c for c in stats_df.columns if c not in group_cols]
-                pivot_df = stats_df.pivot(
-                    on=key_col,
-                    index=[client_id_col, fs_event_timestamp],
-                    values=value_cols,
-                    aggregate_function="first",
-                )
-
-                # Polars pivot names columns as "{value}_{key_value}"; rename to match
-                # pandas convention "{key_value}_{value}" (e.g., "all_amount_lifetime_sum")
-                key_values = stats_df[key_col].unique().to_list()
-                rename_map = {}
-                for col in pivot_df.columns:
-                    if col in (client_id_col, fs_event_timestamp):
-                        continue
-                    for kv in key_values:
-                        suffix = f"_{kv}"
-                        if col.endswith(suffix):
-                            value_part = col[: -len(suffix)]
-                            rename_map[col] = f"{kv}_{value_part}"
-                            break
-                if rename_map:
-                    pivot_df = pivot_df.rename(rename_map)
+                pivot_df = stats_df.select(index_cols).unique()
+                for kv in sorted(stats_df[key_col].unique().to_list()):
+                    key_part = stats_df.filter(pl.col(key_col) == kv).select(
+                        index_cols + [pl.col(v).alias(f"{kv}_{v}") for v in value_cols]
+                    )
+                    pivot_df = pivot_df.join(key_part, on=index_cols, how="left")
 
                 key_features.append(pivot_df)
 
         if key_features:
             key_result = key_features[0]
             for feat_df in key_features[1:]:
-                key_result = key_result.join(feat_df, on=[client_id_col, fs_event_timestamp], how="outer")
+                key_result = key_result.join(
+                    feat_df, on=[client_id_col, fs_event_timestamp], how="full", coalesce=True
+                )
             all_features.append(key_result)
 
     if not all_features:
@@ -685,7 +686,7 @@ def _generate_features_by_window_polars(
 
     result_df = all_features[0]
     for feature_df in all_features[1:]:
-        result_df = result_df.join(feature_df, on=[client_id_col, fs_event_timestamp], how="outer")
+        result_df = result_df.join(feature_df, on=[client_id_col, fs_event_timestamp], how="full", coalesce=True)
 
     # Rename columns with prefix
     rename_dict = {
@@ -741,22 +742,26 @@ def generate_features_by_window(
     key_cols : tuple[str, ...], optional
         Columns to group by and pivot. Use "__all__" for global aggregation
         without grouping by a specific column (default: ("__all__",)).
+        Key values are cast to lowercase strings; null keys are pivoted under
+        the "null" label.
     lookback_days : tuple[int, ...], optional
         Lookback windows in days. Use 0 for lifetime features that aggregate
-        all historical data (default: (0,)).
+        all history strictly before ``fs_event_timestamp`` (default: (0,)).
     numeric_cols : tuple[str, ...], optional
         Numeric columns for statistical aggregations. Generates:
         min, max, avg, sum, std, cnt, diff, p25, p50, p75.
     string_cols : tuple[str, ...], optional
-        String columns for count aggregations. Generates: cnt, nunique, entropy.
+        String columns for count aggregations. Generates: cnt, nunique,
+        unique_ratio (nunique / cnt). Nulls are not counted.
     categorical_cols : tuple[str, ...], optional
-        Categorical columns for count aggregations. Generates: cnt, nunique, entropy.
+        Categorical columns for count aggregations. Generates: cnt, nunique,
+        unique_ratio (nunique / cnt). Nulls are not counted.
     date_cols : tuple[str, ...], optional
         Date columns for date difference aggregations. Generates:
         firstdatediff, lastdatediff, daysbetween.
     boolean_cols : tuple[str, ...], optional
         Boolean columns for positive count/ratio aggregations. Generates:
-        poscnt, posratio.
+        poscnt, posratio. Nulls are skipped (posratio = True / non-null count).
     feature_prefix : str, optional
         Prefix for generated feature names (default: "ft").
     key_col_default : str, optional
@@ -777,9 +782,9 @@ def generate_features_by_window(
 
     Warning
     -------
-    Approximate aggregations (results may vary slightly):
-    - Percentiles (p25, p50, p75) use approximate methods
-      (percentile_approx for Spark, quantile for others)
+    Percentiles (p25, p50, p75) are exact with linear interpolation on the
+    pandas, polars and Spark backends. On bigframes they are computed by
+    BigQuery and may be approximate.
 
     Note
     ----
