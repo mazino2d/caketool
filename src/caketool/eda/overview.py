@@ -53,6 +53,8 @@ def profile(df: pd.DataFrame) -> pd.DataFrame:
         }
         if pd.api.types.is_numeric_dtype(s):
             valid = s.dropna()
+            if pd.api.types.is_bool_dtype(valid):
+                valid = valid.astype(int)
             row.update(
                 {
                     "mean": round(valid.mean(), 4) if len(valid) else None,
@@ -430,13 +432,17 @@ def plot_correlations(
     go.Figure
     """
     from scipy.cluster.hierarchy import leaves_list, linkage
+    from scipy.spatial.distance import squareform
 
     c = _cfg(cfg)
     corr = calculate_correlations(df, num_method, unique_threshold=unique_threshold)
     if corr.shape[1] < 2:
         raise ValueError("Need at least 2 columns to compute associations.")
     if cluster:
-        order = leaves_list(linkage(corr.fillna(0).values, method="complete"))
+        dist = 1 - corr.abs().fillna(0).values
+        np.fill_diagonal(dist, 0)
+        dist = np.clip((dist + dist.T) / 2, 0, None)
+        order = leaves_list(linkage(squareform(dist, checks=False), method="complete"))
         corr = corr.iloc[order, order]
     z = corr.values.copy()
     if mask_threshold > 0:

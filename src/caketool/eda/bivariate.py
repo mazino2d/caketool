@@ -112,7 +112,8 @@ def plot_scatter(
 
     # Always calculate and display correlation
     corr_text = ""
-    if len(data) > 2:
+    x_varies = data[x].nunique() > 1
+    if len(data) > 2 and x_varies and data[y].nunique() > 1:
         r, p_val = association(data[x], data[y], method="pearson")
         p_str = "p<0.001" if p_val < 0.001 else f"p={p_val:.3f}"
         interp_text = _interpret_association(r, p_val)
@@ -148,7 +149,7 @@ def plot_scatter(
         )
 
     # Always add OLS trend line with neon green color
-    if len(data) > 1:
+    if len(data) > 1 and x_varies:
         slope, intercept, _, _, _ = linregress(data[x], data[y])
         x_range = np.array([data[x].min(), data[x].max()])
         y_trend = slope * x_range + intercept
@@ -400,6 +401,17 @@ def plot_category_heatmap(
 # ---------------------------------------------------------------------------
 
 
+def _to_numeric_axis(values: pd.Index) -> np.ndarray:
+    """Convert x values to floats for trend fitting (datetimes become seconds)."""
+    if pd.api.types.is_datetime64_any_dtype(values):
+        return (values - values.min()).total_seconds().to_numpy(dtype=float)
+    if pd.api.types.is_timedelta64_dtype(values):
+        return values.total_seconds().to_numpy(dtype=float)
+    if pd.api.types.is_numeric_dtype(values) and not pd.api.types.is_bool_dtype(values):
+        return np.asarray(values, dtype=float)
+    return np.arange(len(values), dtype=float)
+
+
 def plot_time_series(
     df: pd.DataFrame,
     x: str,
@@ -461,10 +473,11 @@ def plot_time_series(
 
     # Calculate trend correlation (r, p-value) for first y column across all data
     corr_text = ""
-    if len(data) > 2:
-        x_numeric = np.arange(len(data))  # 0, 1, 2, ...
-        y_vals = data[y_cols[0]].values
-        r, p_val = association(x_numeric, y_vals, method="pearson")
+    # Groups are averaged per x so the trend reflects the overall series, not row order.
+    trend = data.groupby(x, sort=True)[y_cols[0]].mean()
+    x_numeric = _to_numeric_axis(trend.index)
+    if len(trend) > 2 and np.unique(x_numeric).size > 1 and trend.nunique() > 1:
+        r, p_val = association(x_numeric, trend.values, method="pearson")
         p_str = "p<0.001" if p_val < 0.001 else f"p={p_val:.3f}"
         interp_text = _interpret_association(r, p_val)
         corr_text = f" | r={r:.3f} ({p_str}) | {interp_text}"
@@ -612,8 +625,9 @@ def rank_associations(
     """Rank numeric and categorical features by association strength with target.
 
     Numeric features: Pearson/Spearman correlation with p-value.
-    Categorical features: Cramér's V with chi-square p-value.
-    All results sorted by |association| descending.
+    Categorical features: Cramér's V with chi-square p-value, or eta when the
+    target is numeric.
+    All results sorted by |association| descending (NaN last).
 
     Parameters
     ----------
@@ -696,20 +710,28 @@ def rank_associations(
         if mask.sum() < 2:
             continue
 
-        cramers_v_val, p_val = association(s1[mask].astype(str), s2[mask].astype(str), method="cramers_v")
+        if target_is_numeric:
+            # Cramér's V on a stringified continuous target treats every value as a category.
+            assoc, p_val = association(s1[mask].astype(str), s2[mask], method="eta")
+            method = "eta"
+        else:
+            assoc, p_val = association(s1[mask].astype(str), s2[mask].astype(str), method="cramers_v")
+            method = "cramers_v"
 
         results.append(
             {
                 "feature": col,
-                "association": round(cramers_v_val, 4),
+                "association": round(assoc, 4),
                 "p_value": round(p_val, 4),
-                "method": "cramers_v",
+                "method": method,
             }
         )
 
     result_df = pd.DataFrame(results)
     if len(result_df) > 0:
-        result_df = result_df.reindex(result_df["association"].abs().argsort()[::-1]).reset_index(drop=True)
+        result_df = result_df.sort_values(
+            "association", key=lambda s: s.abs(), ascending=False, na_position="last"
+        ).reset_index(drop=True)
 
     return result_df
 
