@@ -234,8 +234,12 @@ class TestBinaryBoostTree:
         model = BinaryBoostTree(fast_config).fit(X, y)
 
         assert "noise_cat" not in model.required_input_features_
+        # Third-party deprecation notices (e.g. category_encoders on pandas 3)
+        # are not what this test is about; the encoder's UserWarnings are.
         with warnings.catch_warnings():
             warnings.simplefilter("error")
+            warnings.simplefilter("ignore", DeprecationWarning)
+            warnings.simplefilter("ignore", FutureWarning)
             model.predict_proba(X[model.required_input_features_])
 
     def test_onehot_lineage_keeps_source_column_required(self, binary_data):
