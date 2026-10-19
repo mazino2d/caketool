@@ -11,14 +11,14 @@ class TestExperimentTrackerBase:
 
     def test_abstract_class_cannot_be_instantiated(self):
         """Test that ExperimentTracker cannot be instantiated directly."""
-        from src.caketool.experiment import ExperimentTracker
+        from caketool.experiment import ExperimentTracker
 
         with pytest.raises(TypeError):
             ExperimentTracker("exp", "run")
 
     def test_abstract_methods_defined(self):
         """Test that all abstract methods are defined."""
-        from src.caketool.experiment import ExperimentTracker
+        from caketool.experiment import ExperimentTracker
 
         abstract_methods = {
             "log_params",
@@ -37,7 +37,7 @@ class TestCreateTrackerFactory:
 
     def test_create_unknown_backend_raises(self):
         """Test that unknown backend raises ValueError."""
-        from src.caketool.experiment import create_tracker
+        from caketool.experiment import create_tracker
 
         with pytest.raises(ValueError, match="Unknown backend"):
             create_tracker(
@@ -106,7 +106,7 @@ class TestMLflowTrackerUnit:
         # Need to reload module to pick up mocked mlflow
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -128,7 +128,7 @@ class TestMLflowTrackerUnit:
         """Test MLflowTracker initialization with existing experiment."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -148,7 +148,7 @@ class TestMLflowTrackerUnit:
         """Test MLflowTracker context manager in develop mode."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -172,7 +172,7 @@ class TestMLflowTrackerUnit:
         """Test MLflowTracker context manager in deploy mode."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -190,7 +190,7 @@ class TestMLflowTrackerUnit:
         """Test logging parameters within context manager."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -212,7 +212,7 @@ class TestMLflowTrackerUnit:
         """Test logging parameters in deploy mode is a no-op."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -230,7 +230,7 @@ class TestMLflowTrackerUnit:
         """Test logging metrics without step."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -252,7 +252,7 @@ class TestMLflowTrackerUnit:
         """Test logging metrics with step."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -274,7 +274,7 @@ class TestMLflowTrackerUnit:
         """Test logging a file as artifact."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -295,7 +295,7 @@ class TestMLflowTrackerUnit:
         """Test that load_pickle raises error without active run."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -312,7 +312,7 @@ class TestMLflowTrackerUnit:
         """Test that tags are passed to the run."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -341,7 +341,7 @@ class TestVertexAITrackerUnit:
         """Test VertexAITracker initialization in develop mode."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -364,7 +364,7 @@ class TestVertexAITrackerUnit:
         """Test VertexAITracker initialization in deploy mode."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -383,7 +383,7 @@ class TestVertexAITrackerUnit:
         """Test logging parameters in develop mode."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -397,16 +397,16 @@ class TestVertexAITrackerUnit:
         )
 
         params = {"learning_rate": 0.01, "n_estimators": 100}
-        tracker.log_params(params)
-
-        # Assert on the tracker's own experiment_run mock
-        tracker.experiment_run.log_params.assert_called_once_with(params)
+        with tracker:
+            tracker.log_params(params)
+            # Assert on the tracker's own experiment_run mock
+            tracker.experiment_run.log_params.assert_called_once_with(params)
 
     def test_log_params_deploy_mode_no_op(self, mock_gcp_modules):
         """Test that logging parameters in deploy mode is a no-op."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -426,7 +426,7 @@ class TestVertexAITrackerUnit:
         """Test logging metrics without step."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -440,16 +440,16 @@ class TestVertexAITrackerUnit:
         )
 
         metrics = {"accuracy": 0.95, "loss": 0.05}
-        tracker.log_metrics(metrics)
-
-        # Assert on the tracker's own experiment_run mock
-        tracker.experiment_run.log_metrics.assert_called_once_with(metrics)
+        with tracker:
+            tracker.log_metrics(metrics)
+            # Assert on the tracker's own experiment_run mock
+            tracker.experiment_run.log_metrics.assert_called_once_with(metrics)
 
     def test_log_metrics_with_step(self, mock_gcp_modules):
         """Test logging metrics with step for time-series tracking."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -463,10 +463,10 @@ class TestVertexAITrackerUnit:
         )
 
         metrics = {"accuracy": 0.95}
-        tracker.log_metrics(metrics, step=10)
-
-        # Assert on the tracker's own experiment_run mock
-        tracker.experiment_run.log_time_series_metrics.assert_called_once_with(metrics, step=10)
+        with tracker:
+            tracker.log_metrics(metrics, step=10)
+            # Assert on the tracker's own experiment_run mock
+            tracker.experiment_run.log_time_series_metrics.assert_called_once_with(metrics, step=10)
 
 
 @pytest.fixture
@@ -492,7 +492,7 @@ class TestWandbTrackerUnit:
         """Test WandbTracker initialization."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -513,7 +513,7 @@ class TestWandbTrackerUnit:
         """Test WandbTracker context manager calls wandb.init and finish."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         monkeypatch.delenv("WANDB_ENTITY", raising=False)
         importlib.reload(tracker_module)
@@ -542,7 +542,7 @@ class TestWandbTrackerUnit:
         """Test WandbTracker context manager in deploy mode does not init."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -561,7 +561,7 @@ class TestWandbTrackerUnit:
         """Test logging params updates run config."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -577,7 +577,7 @@ class TestWandbTrackerUnit:
         """Test logging metrics calls run.log."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -593,7 +593,7 @@ class TestWandbTrackerUnit:
         """Test that logging in deploy mode is a no-op."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -610,7 +610,7 @@ class TestWandbTrackerUnit:
         """Test that load_pickle raises error without active run."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -627,7 +627,7 @@ class TestCreateTrackerIntegration:
         """Test creating MLflow tracker via factory."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -646,7 +646,7 @@ class TestCreateTrackerIntegration:
         """Test creating VertexAI tracker via factory."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -667,7 +667,7 @@ class TestCreateTrackerIntegration:
         """Test creating wandb tracker via factory."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -687,7 +687,7 @@ class TestCreateTrackerIntegration:
         """Test creating tracker in deploy mode."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -708,7 +708,7 @@ class TestTrackerWorkflow:
         """Test complete MLflow tracking workflow."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -744,7 +744,7 @@ class TestTrackerWorkflow:
         """Test that deploy mode doesn't log anything."""
         import importlib
 
-        import src.caketool.experiment.experiment_tracker as tracker_module
+        import caketool.experiment.experiment_tracker as tracker_module
 
         importlib.reload(tracker_module)
 
@@ -765,3 +765,223 @@ class TestTrackerWorkflow:
         mock_mlflow_module.log_params.assert_not_called()
         mock_mlflow_module.log_metrics.assert_not_called()
         mock_mlflow_module.log_artifact.assert_not_called()
+
+
+def _isolate_env(monkeypatch, *names):
+    """Make sure env vars set by load_dotenv are removed after the test."""
+    for name in names:
+        monkeypatch.setenv(name, "placeholder")
+        monkeypatch.delenv(name)
+
+
+class TestDotenvConflicts:
+    """The dotenv conflict check must not rely on locals() (KeyError before Python 3.12)."""
+
+    def test_mlflow_dotenv_conflict_raises(self, mock_mlflow_module, tmp_path, monkeypatch):
+        import importlib
+
+        import caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+        _isolate_env(monkeypatch, "MLFLOW_TRACKING_URI")
+        env_file = tmp_path / ".env"
+        env_file.write_text("MLFLOW_TRACKING_URI=http://from-env:5000\n")
+
+        with pytest.raises(ValueError, match="tracking_uri"):
+            tracker_module.MLflowTracker(
+                experiment_name="exp",
+                run_name="run",
+                tracking_uri="http://direct:5000",
+                dotenv_path=str(env_file),
+            )
+
+    def test_mlflow_dotenv_without_conflict(self, mock_mlflow_module, tmp_path, monkeypatch):
+        import importlib
+
+        import caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+        _isolate_env(monkeypatch, "MLFLOW_TRACKING_URI")
+        env_file = tmp_path / ".env"
+        env_file.write_text("MLFLOW_TRACKING_URI=http://from-env:5000\n")
+
+        tracker = tracker_module.MLflowTracker(experiment_name="exp", run_name="run", dotenv_path=str(env_file))
+
+        assert tracker.tracking_uri == "http://from-env:5000"
+
+    def test_vertex_dotenv_conflict_raises(self, mock_gcp_modules, tmp_path, monkeypatch):
+        import importlib
+
+        import caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+        _isolate_env(monkeypatch, "GOOGLE_CLOUD_PROJECT")
+        env_file = tmp_path / ".env"
+        env_file.write_text("GOOGLE_CLOUD_PROJECT=env-project\n")
+
+        with pytest.raises(ValueError, match="project"):
+            tracker_module.VertexAITracker(
+                experiment_name="exp",
+                run_name="run",
+                project="direct-project",
+                location="us-central1",
+                bucket_name="bucket",
+                dotenv_path=str(env_file),
+            )
+
+
+class TestRunLifecycle:
+    """Runs open in __enter__, close in reverse order and record failures."""
+
+    def test_vertex_run_starts_on_enter_not_init(self, mock_gcp_modules):
+        import importlib
+
+        import caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+
+        tracker = tracker_module.VertexAITracker(
+            experiment_name="exp", run_name="run", project="p", location="l", bucket_name="b"
+        )
+        aiplatform = tracker._aiplatform
+        aiplatform.start_run.assert_not_called()
+        assert tracker.experiment_run is None
+
+        with tracker:
+            aiplatform.start_run.assert_called_once_with("run")
+            aiplatform.start_execution.assert_called_once()
+        assert tracker.experiment_run is None
+
+    def test_vertex_closes_execution_before_run_and_passes_exception(self, mock_gcp_modules):
+        import importlib
+
+        import caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+        tracker = tracker_module.VertexAITracker(
+            experiment_name="exp", run_name="run", project="p", location="l", bucket_name="b"
+        )
+        order = []
+        run, execution = MagicMock(), MagicMock()
+        run.__exit__.side_effect = lambda *a: order.append(("run", a[0]))
+        execution.__exit__.side_effect = lambda *a: order.append(("execution", a[0]))
+        tracker._aiplatform.start_run.return_value = run
+        tracker._aiplatform.start_execution.return_value = execution
+
+        with pytest.raises(KeyError):
+            with tracker:
+                raise KeyError("boom")
+
+        assert order == [("execution", KeyError), ("run", KeyError)]
+
+    def test_mlflow_failed_run_status(self, mock_mlflow_module):
+        import importlib
+
+        import caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+        tracker = tracker_module.MLflowTracker(experiment_name="exp", run_name="run")
+
+        with pytest.raises(ValueError):
+            with tracker:
+                raise ValueError("training failed")
+
+        mock_mlflow_module.end_run.assert_called_once_with(status="FAILED")
+
+    def test_mlflow_finished_run_status(self, mock_mlflow_module):
+        import importlib
+
+        import caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+        tracker = tracker_module.MLflowTracker(experiment_name="exp", run_name="run")
+
+        with tracker:
+            pass
+
+        mock_mlflow_module.end_run.assert_called_once_with(status="FINISHED")
+
+    def test_wandb_failed_run_exit_code(self, mock_wandb_module):
+        import importlib
+
+        import caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+        _, mock_run = mock_wandb_module
+        tracker = tracker_module.WandbTracker(experiment_name="proj", run_name="run")
+
+        with pytest.raises(ValueError):
+            with tracker:
+                raise ValueError("training failed")
+
+        mock_run.finish.assert_called_once_with(exit_code=1)
+
+
+class TestLoggingOutsideRun:
+    """Logging in develop mode outside a ``with`` block raises instead of dropping data."""
+
+    def test_mlflow_log_outside_run_raises(self, mock_mlflow_module):
+        import importlib
+
+        import caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+        tracker = tracker_module.MLflowTracker(experiment_name="exp", run_name="run")
+
+        with pytest.raises(RuntimeError, match="No active run"):
+            tracker.log_params({"a": 1})
+        mock_mlflow_module.log_params.assert_not_called()
+
+    def test_wandb_log_outside_run_raises(self, mock_wandb_module):
+        import importlib
+
+        import caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+        tracker = tracker_module.WandbTracker(experiment_name="proj", run_name="run")
+
+        with pytest.raises(RuntimeError, match="No active run"):
+            tracker.log_metrics({"auc": 0.8})
+
+    def test_vertex_log_outside_run_raises(self, mock_gcp_modules):
+        import importlib
+
+        import caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+        tracker = tracker_module.VertexAITracker(
+            experiment_name="exp", run_name="run", project="p", location="l", bucket_name="b"
+        )
+
+        with pytest.raises(RuntimeError, match="No active run"):
+            tracker.log_params({"a": 1})
+
+    def test_deploy_mode_outside_run_is_no_op(self, mock_mlflow_module):
+        import importlib
+
+        import caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+        tracker = tracker_module.MLflowTracker(experiment_name="exp", run_name="run", mode="deploy")
+
+        tracker.log_params({"a": 1})
+        mock_mlflow_module.log_params.assert_not_called()
+
+
+class TestCreateTrackerKwargs:
+    def test_unknown_kwarg_raises_type_error(self, mock_gcp_modules):
+        import importlib
+
+        import caketool.experiment.experiment_tracker as tracker_module
+
+        importlib.reload(tracker_module)
+
+        with pytest.raises(TypeError, match="bucket"):
+            tracker_module.create_tracker(
+                backend="vertex_ai",
+                experiment_name="exp",
+                run_name="run",
+                project="p",
+                location="l",
+                bucket="typo-for-bucket_name",
+            )
