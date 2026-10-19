@@ -13,6 +13,21 @@ try:
 except ImportError:  # pragma: no cover - older category_encoders
     _SupervisedEncoder = None
 
+def _categorical_columns(X: pd.DataFrame) -> list[str]:
+    """Return object, string and category columns.
+
+    pandas 3 stores text as the ``str`` dtype instead of ``object``, so
+    ``select_dtypes("object")`` alone is not enough.
+    """
+    return [
+        col
+        for col, dtype in X.dtypes.items()
+        if isinstance(dtype, pd.CategoricalDtype)
+        or pd.api.types.is_object_dtype(dtype)
+        or pd.api.types.is_string_dtype(dtype)
+    ]
+
+
 _SUPERVISED_ENCODER_NAMES = {
     "TargetEncoder",
     "LeaveOneOutEncoder",
@@ -127,7 +142,7 @@ class FeatureEncoder(TransformerMixin, BaseEstimator):
         """
         self.encoder_ = self._new_encoder()
 
-        self.object_cols_ = list(X.select_dtypes(["object", "category"]).columns)
+        self.object_cols_ = _categorical_columns(X)
         if len(self.object_cols_) == 0:
             self.fitted_cols_ = []
             self.feature_lineage_ = {}
@@ -204,7 +219,7 @@ class FeatureEncoder(TransformerMixin, BaseEstimator):
         fitted_set = set(self.fitted_cols_)
         object_cols_set = set(self.object_cols_)
 
-        current_cat_cols = set(X.select_dtypes(["object", "category"]).columns)
+        current_cat_cols = set(_categorical_columns(X))
         new_cat_cols = current_cat_cols - object_cols_set
         if new_cat_cols:
             warnings.warn(

@@ -327,7 +327,8 @@ class TestMissingValueImputer:
         imputer = MissingValueImputer(strategy="constant", fill_value=0)
         result = imputer.fit_transform(df)
 
-        assert result["b"].iloc[0] is None
+        assert pd.isna(result["b"].iloc[0])
+        assert result["b"].iloc[1] == "x"
 
     def test_fit_returns_self(self):
         df = pd.DataFrame({"a": [1.0, 2.0]})
