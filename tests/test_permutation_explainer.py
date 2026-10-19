@@ -6,7 +6,8 @@ import pandas as pd
 import pytest
 from sklearn.datasets import make_classification
 from sklearn.ensemble import GradientBoostingClassifier
-from src.caketool.explainability import ModelExplainer, PermutationExplainer
+
+from caketool.explainability import ModelExplainer, PermutationExplainer
 
 # ---------------------------------------------------------------------------
 # Module-scoped fixtures

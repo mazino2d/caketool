@@ -44,8 +44,6 @@ cachetools==5.3.3
     #   google-auth
     #   mlflow-skinny
     #   mlflow-tracing
-caketool[gcp,onprem,polars,spark,wandb] @ file:///Users/khoi.do/Code/caketool
-    # via caketool (pyproject.toml)
 category-encoders==2.6.3
     # via
     #   caketool

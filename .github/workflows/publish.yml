@@ -1,9 +1,9 @@
 name: Publish to PyPI
 
-# Release or vX.Y.Z tag → PyPI; tags containing "rc" → TestPyPI.
+# vX.Y.Z tag → PyPI; tags containing "rc" → TestPyPI. Creating a GitHub
+# release pushes its tag, so the tag trigger alone covers releases (a separate
+# release trigger would publish the same version twice).
 on:
-  release:
-    types: [published]
   push:
     tags:
       - "v*"

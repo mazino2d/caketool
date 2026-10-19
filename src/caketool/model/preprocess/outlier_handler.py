@@ -7,7 +7,8 @@ class OutlierClipper(TransformerMixin, BaseEstimator):
     """Clip numeric features to quantile-based bounds (winsorization).
 
     Standard practice in credit risk modeling to limit the influence of
-    extreme values before encoding and feature selection.
+    extreme values before encoding and feature selection. Only numeric
+    columns are clipped; boolean, categorical and object columns pass through.
 
     Parameters
     ----------
@@ -40,7 +41,7 @@ class OutlierClipper(TransformerMixin, BaseEstimator):
         -------
         self
         """
-        num_cols = X.select_dtypes(exclude="object").columns
+        num_cols = X.select_dtypes("number").columns
         self.bounds_ = {
             col: (X[col].quantile(self.lower_quantile), X[col].quantile(self.upper_quantile)) for col in num_cols
         }

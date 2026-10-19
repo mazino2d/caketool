@@ -1,7 +1,9 @@
+import sys
 from os import PathLike
 
 import pytest
-from src.caketool.utils.lib_utils import get_class, require_dependencies
+
+from caketool.utils.lib_utils import _install_hint, get_class, require_dependencies
 
 
 def test_get_PathLike_class():
@@ -77,3 +79,66 @@ class TestRequireDependencies:
 
         assert func_with_args(1, 2) == 3
         assert func_with_args(1, 2, c=3) == 6
+
+    def test_missing_submodule_of_installed_package_raises(self):
+        """Dot notation checks the full path, not only the top-level package."""
+
+        @require_dependencies("os.nonexistent_submodule_xyz")
+        def func_with_missing_submodule():
+            return "should not reach"
+
+        with pytest.raises(ImportError, match="os.nonexistent_submodule_xyz"):
+            func_with_missing_submodule()
+
+    def test_missing_parent_package_raises(self):
+        """A missing parent package is reported, not raised as ModuleNotFoundError."""
+
+        @require_dependencies("nonexistent_pkg_xyz.sub")
+        def func_with_missing_parent():
+            return "should not reach"
+
+        with pytest.raises(ImportError, match="Missing required dependencies: nonexistent_pkg_xyz.sub"):
+            func_with_missing_parent()
+
+    def test_installed_submodule_executes(self):
+        @require_dependencies("json.decoder")
+        def func_with_submodule():
+            return "ok"
+
+        assert func_with_submodule() == "ok"
+
+
+class TestInstallHint:
+    def test_optional_extra_hint(self):
+        assert _install_hint("google.cloud.aiplatform") == "caketool[gcp]"
+        assert _install_hint("mlflow") == "caketool[onprem]"
+        assert _install_hint("pyspark.sql") == "caketool[spark]"
+
+    def test_unknown_package_uses_top_level_name(self):
+        assert _install_hint("some_pkg.sub") == "some_pkg"
+
+
+class TestGetClass:
+    def test_unimported_submodule(self, monkeypatch):
+        """Submodules are imported on demand."""
+        import email.mime
+
+        monkeypatch.delitem(sys.modules, "email.mime.text", raising=False)
+        monkeypatch.delattr(email.mime, "text", raising=False)
+
+        cls = get_class("email.mime.text.MIMEText")
+
+        assert cls is sys.modules["email.mime.text"].MIMEText
+
+    def test_top_level_module(self):
+        import json
+
+        assert get_class("json") is json
+
+    def test_missing_attribute_raises(self):
+        with pytest.raises(AttributeError):
+            get_class("os.NoSuchClassXyz")
+
+    def test_missing_module_raises(self):
+        with pytest.raises(ImportError):
+            get_class("nonexistent_pkg_xyz.Thing")

@@ -11,8 +11,8 @@ class MulticlassBoostTree(ClassifierMixin, BaseBoostTree):
     """XGBoost multiclass classifier with an integrated preprocessing pipeline.
 
     Extends ``BaseBoostTree`` with ``objective="multi:softprob"``.
-    ``predict_proba`` returns a ``(n_samples, n_classes)`` array; ``predict``
-    returns the argmax class index.
+    ``predict_proba`` returns a ``(n_samples, n_classes)`` array ordered like
+    ``classes_``; ``predict`` returns the most probable label.
 
     Parameters
     ----------
@@ -21,7 +21,9 @@ class MulticlassBoostTree(ClassifierMixin, BaseBoostTree):
         when ``None``.
     num_class : int or None
         Number of target classes. When ``None``, inferred from ``y`` during
-        ``fit`` via ``len(np.unique(y))``.
+        ``fit``. When set, ``fit`` raises if ``y`` has a different number of
+        classes. Labels need not be ``0..k-1``; ``predict`` returns the
+        original labels.
 
     Examples
     --------
@@ -58,3 +60,7 @@ class MulticlassBoostTree(ClassifierMixin, BaseBoostTree):
         if self.num_class is not None:
             model.set_params(num_class=self.num_class)
         return model
+
+    def _validate_classes(self) -> None:
+        if self.num_class is not None and len(self.classes_) != self.num_class:
+            raise ValueError(f"num_class={self.num_class} but y has {len(self.classes_)} classes: {self.classes_}.")

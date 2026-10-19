@@ -1,14 +1,12 @@
 """Model building utilities for credit risk and machine learning tasks.
 
 Provides XGBoost-based models with integrated preprocessing pipelines for
-binary classification, multiclass classification, ranking, and regression.
+binary and multiclass classification.
 
 Task-specific models
 --------------------
 - ``BinaryBoostTree`` – binary classification (``binary:logistic``)
 - ``MulticlassBoostTree`` – multiclass classification (``multi:softprob``)
-- ``BoostRanker`` – learning-to-rank (``rank:ndcg``)
-- ``BoostRegressor`` – regression (``reg:squarederror``)
 
 Ensemble utilities
 ------------------
@@ -26,5 +24,3 @@ from .base.voting_model import VotingModel as VotingModel
 from .classification.binary import BinaryBoostTree as BinaryBoostTree
 from .classification.multiclass import MulticlassBoostTree as MulticlassBoostTree
 from .config import ModelConfig as ModelConfig
-from .ranking.ranker import BoostRanker as BoostRanker
-from .regression.regressor import BoostRegressor as BoostRegressor

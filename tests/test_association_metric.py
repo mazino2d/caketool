@@ -5,7 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-from src.caketool.metric.association_metric import association
+
+from caketool.metric.association_metric import association
 
 
 @pytest.fixture()
