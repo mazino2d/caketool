@@ -4,8 +4,10 @@ import numpy as np
 import pandas as pd
 import pytest
 from sklearn.datasets import make_classification
+from sklearn.exceptions import NotFittedError
 from src.caketool.model.preprocess import (
     ColinearFeatureRemover,
+    FeatureEncoder,
     FeatureRemover,
     InfinityHandler,
     MissingValueImputer,
@@ -133,6 +135,34 @@ class TestColinearFeatureRemover:
         remover = ColinearFeatureRemover()
         assert remover.fit(sample_df, y) is remover
 
+    @pytest.fixture
+    def collinear_df(self):
+        rng = np.random.default_rng(0)
+        a = rng.standard_normal(50)
+        return pd.DataFrame({"a": a, "dup": a + 0.01, "c": rng.standard_normal(50)}, index=range(100, 150)), (
+            a > 0
+        ).astype(int)
+
+    def test_target_matched_by_position_not_index(self, collinear_df):
+        df, y = collinear_df
+        remover = ColinearFeatureRemover().fit(df, pd.Series(y))  # default RangeIndex differs from df.index
+
+        assert remover.dropped_cols_ == ["dup"]
+
+    def test_accepts_numpy_target(self, collinear_df):
+        df, y = collinear_df
+        remover = ColinearFeatureRemover().fit(df, y)
+
+        assert remover.dropped_cols_ == ["dup"]
+
+    def test_handles_nan(self, collinear_df):
+        df, y = collinear_df
+        df = df.copy()
+        df.loc[df.index[::4], "a"] = np.nan
+        remover = ColinearFeatureRemover().fit(df, y)
+
+        assert len(remover.dropped_cols_) == 1
+
 
 # ---------------------------------------------------------------------------
 # UnivariateFeatureRemover
@@ -164,9 +194,9 @@ class TestUnivariateFeatureRemover:
         remover = UnivariateFeatureRemover()
         remover.fit(X, y)
 
-        assert remover.feature_importance is not None
-        assert "features" in remover.feature_importance.columns
-        assert "p_values" in remover.feature_importance.columns
+        assert remover.feature_importance_ is not None
+        assert "features" in remover.feature_importance_.columns
+        assert "p_values" in remover.feature_importance_.columns
 
     def test_fit_returns_self(self, classification_data):
         X, y = classification_data
@@ -179,6 +209,35 @@ class TestUnivariateFeatureRemover:
         remover.fit(X, y)
 
         assert len(remover.transform(X).columns) == len(X.columns)
+
+    def test_handles_nan_by_scoring_non_missing_rows(self, classification_data):
+        X, y = classification_data
+        X = X.copy()
+        X.loc[::5, "f0"] = np.nan
+        full = UnivariateFeatureRemover().fit(X.dropna(), y[X["f0"].notna()])
+        remover = UnivariateFeatureRemover().fit(X, y)
+
+        f0 = remover.feature_importance_.set_index("features").loc["f0", "p_values"]
+        expected = full.feature_importance_.set_index("features").loc["f0", "p_values"]
+        assert f0 == pytest.approx(expected)
+
+    def test_all_nan_column_is_dropped(self, classification_data):
+        X, y = classification_data
+        X = X.assign(empty=np.nan)
+        remover = UnivariateFeatureRemover().fit(X, y)
+
+        assert "empty" in remover.dropped_cols_
+
+    def test_accepts_numpy_target(self, classification_data):
+        X, y = classification_data
+        remover = UnivariateFeatureRemover().fit(X, y.to_numpy())
+
+        assert remover.dropped_cols_ == UnivariateFeatureRemover().fit(X, y).dropped_cols_
+
+    def test_transform_before_fit_raises(self, classification_data):
+        X, _ = classification_data
+        with pytest.raises(NotFittedError):
+            UnivariateFeatureRemover().transform(X)
 
 
 # ---------------------------------------------------------------------------
@@ -217,8 +276,18 @@ class TestInfinityHandler:
 
         assert np.isinf(df["a"].iloc[0])
 
-    def test_default_replacement_value_is_minus_100(self):
-        assert InfinityHandler().def_val == -100
+    def test_default_replaces_infinity_with_nan(self):
+        df = pd.DataFrame({"a": [1.0, np.inf, -np.inf]})
+        result = InfinityHandler().fit_transform(df)
+
+        assert result["a"].isna().tolist() == [False, True, True]
+
+    def test_skips_bool_and_category_columns(self):
+        df = pd.DataFrame({"a": [np.inf, 1.0], "b": [True, False], "c": pd.Categorical(["x", "y"])})
+        result = InfinityHandler().fit_transform(df)
+
+        assert result["b"].dtype == bool
+        assert isinstance(result["c"].dtype, pd.CategoricalDtype)
 
     def test_fit_returns_self(self):
         handler = InfinityHandler()
@@ -303,3 +372,54 @@ class TestOutlierClipper:
         df = pd.DataFrame({"a": [1.0, 2.0]})
         clipper = OutlierClipper()
         assert clipper.fit(df) is clipper
+
+    def test_skips_bool_and_category_columns(self):
+        df = pd.DataFrame(
+            {"a": [1.0, 2.0, 3.0, 100.0], "b": [True, False, True, False], "c": pd.Categorical(list("xyxy"))}
+        )
+        clipper = OutlierClipper(lower_quantile=0.1, upper_quantile=0.9)
+        result = clipper.fit_transform(df)
+
+        assert set(clipper.bounds_) == {"a"}
+        assert result["b"].tolist() == df["b"].tolist()
+        assert result["c"].tolist() == df["c"].tolist()
+
+
+# ---------------------------------------------------------------------------
+# FeatureEncoder
+# ---------------------------------------------------------------------------
+
+
+class TestFeatureEncoder:
+    def test_onehot_replaces_original_column(self):
+        df = pd.DataFrame({"num": [1.0, 2.0, 3.0], "city": ["a", "b", "a"]})
+        result = FeatureEncoder("category_encoders.OneHotEncoder").fit_transform(df)
+
+        assert "city" not in result.columns
+        assert result.select_dtypes("object").empty
+
+    def test_lineage_maps_outputs_to_inputs(self):
+        df = pd.DataFrame({"city": ["a", "b", "a"], "city_type": ["x", "x", "y"]})
+        encoder = FeatureEncoder("category_encoders.OneHotEncoder").fit(df)
+
+        for out_col, sources in encoder.feature_lineage_.items():
+            assert sources == ["city_type" if out_col.startswith("city_type_") else "city"]
+
+    def test_cv_encodes_training_rows_out_of_fold(self):
+        rng = np.random.default_rng(0)
+        # Pure-noise high-cardinality column: in-sample target means leak the label.
+        df = pd.DataFrame({"id": [f"c{i}" for i in rng.integers(0, 150, 600)]})
+        y = pd.Series(rng.integers(0, 2, 600))
+        in_sample = FeatureEncoder("category_encoders.TargetEncoder").fit_transform(df, y)
+        oof = FeatureEncoder("category_encoders.TargetEncoder", cv=5).fit_transform(df, y)
+
+        assert abs(np.corrcoef(in_sample["id"], y)[0, 1]) > abs(np.corrcoef(oof["id"], y)[0, 1])
+        assert abs(np.corrcoef(oof["id"], y)[0, 1]) < 0.1
+
+    def test_cv_ignored_for_unsupervised_encoder(self):
+        df = pd.DataFrame({"city": ["a", "b", "a", "c", "b", "a"]})
+        y = pd.Series([0, 1, 0, 1, 0, 1])
+        plain = FeatureEncoder("category_encoders.OrdinalEncoder").fit_transform(df, y)
+        with_cv = FeatureEncoder("category_encoders.OrdinalEncoder", cv=2).fit_transform(df, y)
+
+        pd.testing.assert_frame_equal(plain, with_cv)

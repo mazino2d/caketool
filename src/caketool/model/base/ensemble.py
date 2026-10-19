@@ -57,8 +57,13 @@ class BaseEnsemble(BaseEstimator):
         """
         return self
 
+    @property
+    def classes_(self) -> np.ndarray:
+        """Class labels, taken from the first estimator."""
+        return self.estimators[0].classes_
+
     def predict(self, X: pd.DataFrame) -> np.ndarray:
-        """Average class predictions across all estimators.
+        """Predict the class with the highest averaged probability.
 
         Parameters
         ----------
@@ -67,9 +72,9 @@ class BaseEnsemble(BaseEstimator):
         Returns
         -------
         np.ndarray of shape (n_samples,)
+            Labels from ``classes_``.
         """
-        y_preds = [est.predict(X) for est in self.estimators]
-        return np.mean(y_preds, axis=0)
+        return self.classes_[np.argmax(self.predict_proba(X), axis=1)]
 
     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
         """Average class probabilities across all estimators.

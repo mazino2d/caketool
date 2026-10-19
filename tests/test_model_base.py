@@ -44,3 +44,21 @@ class TestVotingModel:
     def test_fit_returns_self(self):
         model = VotingModel([_ConstantEstimator(0.5)])
         assert model.fit(pd.DataFrame({"a": [1, 2]})) is model
+
+    def test_predict_returns_class_labels_for_classifiers(self):
+        X = pd.DataFrame({"a": [1, 2, 3]})
+        model = VotingModel([_ConstantClassifier(0.2), _ConstantClassifier(0.4)])
+
+        np.testing.assert_array_equal(model.predict(X), ["neg", "neg", "neg"])
+
+    def test_predict_picks_highest_mean_probability(self):
+        X = pd.DataFrame({"a": [1, 2]})
+        model = VotingModel([_ConstantClassifier(0.3), _ConstantClassifier(0.9)])
+
+        np.testing.assert_array_equal(model.predict(X), ["pos", "pos"])
+
+
+class _ConstantClassifier(_ConstantEstimator):
+    """Dummy classifier with string labels."""
+
+    classes_ = np.array(["neg", "pos"])

@@ -38,8 +38,16 @@ class VotingModel(ClassifierMixin, BaseEstimator):
         """
         return self
 
+    @property
+    def classes_(self) -> np.ndarray:
+        """Class labels, taken from the first estimator."""
+        return self.estimators[0].classes_
+
     def predict(self, X: pd.DataFrame) -> np.ndarray:
-        """Average predictions across all estimators.
+        """Predict the class with the highest averaged probability.
+
+        Falls back to averaging ``predict`` outputs when the estimators do not
+        expose ``predict_proba`` and ``classes_`` (e.g. regressors).
 
         Parameters
         ----------
@@ -49,6 +57,9 @@ class VotingModel(ClassifierMixin, BaseEstimator):
         -------
         np.ndarray of shape (n_samples,)
         """
+        first = self.estimators[0]
+        if hasattr(first, "predict_proba") and hasattr(first, "classes_"):
+            return self.classes_[np.argmax(self.predict_proba(X), axis=1)]
         y_preds = [estimator.predict(X) for estimator in self.estimators]
         return np.mean(y_preds, axis=0)
 

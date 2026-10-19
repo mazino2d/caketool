@@ -1,5 +1,7 @@
 """Tests for BinaryBoostTree, MulticlassBoostTree, and BaseEnsemble."""
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -181,6 +183,92 @@ class TestBinaryBoostTree:
 
         pd.testing.assert_frame_equal(X, X_copy)
 
+    def test_fit_with_missing_values(self, binary_data, fast_config):
+        X, y = binary_data
+        X = X.copy()
+        X.loc[::7, "f0"] = np.nan
+        model = BinaryBoostTree(fast_config).fit(X, y)
+
+        assert model.predict_proba(X).shape == (len(X), 2)
+
+    def test_fit_with_infinite_values(self, binary_data, fast_config):
+        X, y = binary_data
+        X = X.copy()
+        X.loc[:10, "f1"] = np.inf
+        X.loc[11:20, "f1"] = -np.inf
+        cfg = ModelConfig(n_estimators=10, max_depth=3, use_outlier_clipper=True)
+        model = BinaryBoostTree(cfg).fit(X, y)
+
+        lower, upper = model.preprocess.named_steps["outlier_clipper"].bounds_["f1"]
+        assert np.isfinite(lower) and np.isfinite(upper)
+        assert np.isfinite(model.predict_proba(X)).all()
+
+    def test_fit_with_numpy_target_and_custom_index(self, binary_data, fast_config):
+        X, y = binary_data
+        X = X.set_index(pd.Index(range(1000, 1000 + len(X))))
+        model = BinaryBoostTree(fast_config).fit(X, y.to_numpy())
+
+        assert model.predict(X).shape == (len(X),)
+
+    def test_fit_with_bool_and_category_columns(self, binary_data, fast_config):
+        X, y = binary_data
+        X = X.assign(flag=X["f0"] > 0, grade=pd.Categorical(np.where(X["f1"] > 0, "A", "B")))
+        cfg = ModelConfig(n_estimators=10, max_depth=3, use_outlier_clipper=True)
+        model = BinaryBoostTree(cfg).fit(X, y)
+
+        assert model.predict_proba(X).shape == (len(X), 2)
+
+    def test_predict_returns_original_labels(self, binary_data, fast_config):
+        X, y = binary_data
+        labels = pd.Series(np.where(y == 1, "bad", "good"))
+        model = BinaryBoostTree(fast_config).fit(X, labels)
+
+        assert list(model.classes_) == ["bad", "good"]
+        assert set(model.predict(X)) <= {"bad", "good"}
+
+    def test_dropped_categorical_not_required_and_no_warning(self, binary_data, fast_config):
+        X, y = binary_data
+        rng = np.random.default_rng(0)
+        X = X.assign(noise_cat=rng.choice(list("xyz"), len(X)))
+        model = BinaryBoostTree(fast_config).fit(X, y)
+
+        assert "noise_cat" not in model.required_input_features_
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            model.predict_proba(X[model.required_input_features_])
+
+    def test_onehot_lineage_keeps_source_column_required(self, binary_data):
+        X, y = binary_data
+        X = X.assign(city=np.where(X["f0"] > 0, "hcm", "hn"))
+        cfg = ModelConfig(n_estimators=10, max_depth=3, encoder_name="category_encoders.OneHotEncoder")
+        model = BinaryBoostTree(cfg).fit(X, y)
+
+        uses_city = any(f.startswith("city_") for f in model.get_feature_names())
+        assert ("city" in model.required_input_features_) == uses_city
+        model.predict_proba(X[model.required_input_features_])
+
+    def test_target_encoding_is_out_of_fold(self, binary_data, fast_config):
+        X, y = binary_data
+        rng = np.random.default_rng(0)
+        # High-cardinality noise: in-sample target encoding would make it look predictive.
+        X = X.assign(noise_id=[f"id{i}" for i in rng.integers(0, 100, len(X))])
+        model = BinaryBoostTree(fast_config).fit(X, y)
+
+        assert "noise_id" not in model.required_input_features_
+
+    def test_early_stopping_requires_eval_set(self, binary_data, fast_config):
+        X, y = binary_data
+        with pytest.raises(ValueError):
+            BinaryBoostTree(fast_config).fit(X, y, early_stopping_rounds=3)
+
+    def test_fit_oof_with_early_stopping(self, binary_data):
+        X, y = binary_data
+        cfg = ModelConfig(n_estimators=200, max_depth=3)
+        models, oof_pred, _ = BinaryBoostTree.fit_oof(X, y, config=cfg, n_splits=3, early_stopping_rounds=5)
+
+        assert oof_pred.shape == (len(y), 2)
+        assert all(m.model.best_iteration < 199 for m in models)
+
 
 # ---------------------------------------------------------------------------
 # MulticlassBoostTree
@@ -202,6 +290,19 @@ class TestMulticlassBoostTree:
         model.fit(X, y)
 
         assert model.predict(X).shape == (len(X),)
+
+    def test_non_contiguous_labels(self, multiclass_data, fast_config):
+        X, y = multiclass_data
+        labels = y.map({0: 10, 1: 20, 2: 30})
+        model = MulticlassBoostTree(fast_config).fit(X, labels)
+
+        assert list(model.classes_) == [10, 20, 30]
+        assert set(model.predict(X)) <= {10, 20, 30}
+
+    def test_num_class_mismatch_raises(self, multiclass_data, fast_config):
+        X, y = multiclass_data
+        with pytest.raises(ValueError):
+            MulticlassBoostTree(fast_config, num_class=4).fit(X, y)
 
 
 # ---------------------------------------------------------------------------
@@ -245,3 +346,12 @@ class TestBaseEnsemble:
         ensemble = BaseEnsemble(models)
 
         assert ensemble.fit() is ensemble
+
+    def test_predict_returns_class_labels(self, binary_data, fast_config):
+        X, y = binary_data
+        models, _, _ = BinaryBoostTree.fit_oof(X, y, config=fast_config, n_splits=3)
+        ensemble = BaseEnsemble(models)
+        pred = ensemble.predict(X)
+
+        assert set(np.unique(pred)) <= {0, 1}
+        np.testing.assert_array_equal(pred, np.argmax(ensemble.predict_proba(X), axis=1))
