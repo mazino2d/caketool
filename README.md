@@ -1,21 +1,24 @@
 # Caketool
 
 A Python MLOps toolkit for common machine learning and data science workflows.
-Provides EDA, feature engineering, model training, explainability, experiment tracking, model monitoring, calibration, and metrics — all designed for production-ready ML pipelines.
+Provides EDA, feature engineering, model training, explainability, experiment tracking, drift detection, calibration, and metrics — all designed for production-ready ML pipelines.
+
+Supports Python 3.10–3.12.
 
 ---
 
 ## Installation
 
 ```bash
-# Core (pandas, numpy, sklearn, xgboost)
+# Core (pandas, numpy, scikit-learn, xgboost, shap, plotly)
 pip install caketool
 
-# With MLflow support
-pip install "caketool[onprem]"
-
-# With Google Cloud (Vertex AI, BigQuery)
-pip install "caketool[gcp]"
+# Optional extras
+pip install "caketool[onprem]"   # MLflow tracking
+pip install "caketool[gcp]"      # Vertex AI, BigQuery, GCS, BigFrames
+pip install "caketool[wandb]"    # Weights & Biases tracking
+pip install "caketool[spark]"    # PySpark feature backend
+pip install "caketool[polars]"   # Polars feature backend
 
 # Everything
 pip install "caketool[all]"
@@ -56,38 +59,47 @@ result = generate_features_by_window(
     numeric_cols=("amount", "balance"),
     string_cols=("category",),
     boolean_cols=("is_active",),
-    lookback_days=(0, 7, 30),   # 0 = lifetime
+    lookback_days=(0, 7, 30),   # 0 = lifetime (all rows before the snapshot)
     backend="pandas",           # "pandas" | "polars" | "spark" | "bigframes"
 )
 ```
 
+Only rows with `report_date < fs_event_timestamp` are used, for every window including lifetime.
+
 ### Model Training
 
 ```python
-from caketool.model import BoostTree
+from caketool.model import BinaryBoostTree, ModelConfig
 
-model = BoostTree()
-model.fit(X_train, y_train, eval_set=[(X_val, y_val)])
+model = BinaryBoostTree(ModelConfig(n_estimators=500))
+model.fit(X_train, y_train, eval_set=[(X_val, y_val)], early_stopping_rounds=50)
 proba = model.predict_proba(X_test)[:, 1]
 importance = model.get_feature_importance()
 ```
 
+`MulticlassBoostTree` has the same API for multiclass targets. The built-in pipeline handles infinities, outliers, categorical encoding (out-of-fold target encoding by default) and feature selection; missing values are left to XGBoost.
+
 ### Out-of-Fold Cross-Validation
 
 ```python
-from caketool.model import BoostTree, EnsembleBoostTree
+from caketool.model import BaseEnsemble, BinaryBoostTree
 
-models, oof_preds, oof_labels = BoostTree.fit_oof(X_train, y_train, n_splits=5)
-ensemble = EnsembleBoostTree(models)
+models, oof_preds, oof_labels = BinaryBoostTree.fit_oof(
+    X_train, y_train, n_splits=5, early_stopping_rounds=50
+)
+ensemble = BaseEnsemble(models)
 proba = ensemble.predict_proba(X_test)[:, 1]
+labels = ensemble.predict(X_test)  # argmax of the averaged probabilities
 ```
+
+With early stopping, each fold stops on a split of its own training data, so OOF predictions stay unbiased.
 
 ### Explainability
 
 ```python
 from caketool.explainability import PermutationExplainer
 
-explainer = PermutationExplainer(model=model)
+explainer = PermutationExplainer(model=model)  # pass class_index=k for multiclass models
 explainer.fit(X_test)
 
 # Global feature importance
@@ -105,9 +117,14 @@ explainer.show_dependence(feature="income")
 ### Score Calibration
 
 ```python
-from caketool.calibration import calibrate_score_to_normal
+from caketool.calibration import NormalScoreCalibrator, calibrate_score_to_normal
 
-calibrated = calibrate_score_to_normal(raw_scores, standard=False)
+# Stateless
+calibrated = calibrate_score_to_normal(raw_scores)
+
+# Standardised with statistics from a reference set (safe for per-row scoring)
+calibrator = NormalScoreCalibrator().fit(train_scores)
+calibrated = calibrator.transform(new_scores)
 ```
 
 ### Metrics
@@ -115,16 +132,18 @@ calibrated = calibrate_score_to_normal(raw_scores, standard=False)
 ```python
 from caketool.metric import gini, psi
 
-print(gini(y_true, y_pred))          # Gini coefficient
+print(gini(y_true, y_pred))          # Gini coefficient, in [-1, 1]
 print(psi(expected, actual))          # Population Stability Index
 ```
+
+`psi` uses open-ended outer bins, so values outside the reference range are counted, and missing values get their own bin.
 
 ### Risk Report
 
 ```python
-from caketool.report import decribe_risk_score
+from caketool.report import describe_risk_score
 
-report = decribe_risk_score(score_df, pred_col="score", label_col="label")
+report = describe_risk_score(score_df, pred_col="score", label_col="label")
 ```
 
 ### Drift Detection
@@ -132,9 +151,10 @@ report = decribe_risk_score(score_df, pred_col="score", label_col="label")
 ```python
 from caketool.monitor import AdversarialModel
 
-model = AdversarialModel()
-model.fit(reference_df, current_df)
-model.show()    # prints ROC AUC and top important features
+adv = AdversarialModel(random_state=0)
+adv.fit(reference_df, current_df)
+print(adv.auc_score)               # ~0.5 = no drift, close to 1 = strong drift
+drift = adv.get_drift_features()   # features ranked by contribution to drift
 ```
 
 ### Experiment Tracking
@@ -163,14 +183,14 @@ with create_tracker("vertex_ai", experiment_name="my-exp", run_name="run-001",
 | ------ | ----------- | ----------- |
 | `caketool.eda` | `profile`, `plot_correlations`, `plot_scatter`, `plot_distribution_by_group`, `rank_associations` | Exploratory data analysis with Plotly |
 | `caketool.feature` | `generate_features_by_window` | Multi-backend aggregated feature engineering |
-| `caketool.model` | `BoostTree`, `EnsembleBoostTree`, `VotingModel` | XGBoost training & ensemble |
-| `caketool.model` | `FeatureEncoder`, `FeatureRemover`, `ColinearFeatureRemover`, `UnivariateFeatureRemover`, `InfinityHandler` | sklearn-compatible preprocessing transformers |
+| `caketool.model` | `BinaryBoostTree`, `MulticlassBoostTree`, `BaseEnsemble`, `VotingModel`, `ModelConfig` | XGBoost training & ensemble |
+| `caketool.model.preprocess` | `FeatureEncoder`, `FeatureRemover`, `ColinearFeatureRemover`, `UnivariateFeatureRemover`, `InfinityHandler`, `MissingValueImputer`, `OutlierClipper` | sklearn-compatible preprocessing transformers |
 | `caketool.explainability` | `PermutationExplainer` | SHAP-based model-agnostic explainability |
-| `caketool.calibration` | `calibrate_score_to_normal` | Normal distribution score calibration |
-| `caketool.metric` | `gini`, `psi`, `psi_from_distribution` | Classification and stability metrics |
-| `caketool.report` | `decribe_risk_score` | Risk score band report |
+| `caketool.calibration` | `calibrate_score_to_normal`, `NormalScoreCalibrator` | Normal distribution score calibration |
+| `caketool.metric` | `association`, `gini`, `psi`, `psi_from_distribution` | Association, classification and stability metrics |
+| `caketool.report` | `describe_risk_score` | Risk score band report |
 | `caketool.monitor` | `AdversarialModel` | Dataset drift detection |
-| `caketool.experiment` | `create_tracker`, `MLflowTracker`, `VertexAITracker` | Experiment tracking abstraction |
+| `caketool.experiment` | `create_tracker`, `MLflowTracker`, `VertexAITracker`, `WandbTracker` | Experiment tracking abstraction |
 
 ---
 
@@ -207,7 +227,7 @@ pip install -e ".[docs]"
 pdoc src/caketool   # Preview at http://localhost:8080
 ```
 
-Docs are published automatically to [GitHub Pages](https://mazino2d.github.io/caketool) when a version tag is pushed.
+The API reference is generated from docstrings with pdoc and published to [GitHub Pages](https://mazino2d.github.io/caketool) on every push to `main`.
 
 ---
 

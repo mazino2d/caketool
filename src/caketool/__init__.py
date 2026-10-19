@@ -7,17 +7,18 @@ credit scoring models, including:
   correlation matrices).
 - **feature** – Window-based feature engineering across multiple backends
   (pandas, polars, Spark, BigQuery BigFrames).
-- **model** – XGBoost-based binary classifier with a built-in preprocessing
-  pipeline, ensemble utilities, and feature selection.
+- **model** – XGBoost-based binary and multiclass classifiers with a built-in
+  preprocessing pipeline, ensemble utilities, and feature selection.
 - **metric** – Association metrics (Pearson, Spearman, Eta, Cramér's V),
   Gini coefficient, and Population Stability Index (PSI).
 - **calibration** – Post-hoc score calibration via normal distribution
-  transformation.
+  transformation (stateless function or fit/transform estimator).
 - **explainability** – SHAP-based global and local model explanations.
 - **experiment** – Unified experiment tracking interface for Vertex AI,
   MLflow, and Weights & Biases.
 - **monitor** – Drift detection (adversarial classification).
 - **report** – Risk score segmentation and reporting for credit decisions.
+- **utils** – Dynamic imports and optional-dependency checks.
 
 Quick start
 -----------
