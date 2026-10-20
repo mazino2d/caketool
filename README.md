@@ -66,33 +66,37 @@ result = generate_features_by_window(
 
 Only rows with `report_date < fs_event_timestamp` are used, for every window including lifetime.
 
-### Model Training
+### Feature Selection
 
 ```python
-from caketool.model import BinaryBoostTree, ModelConfig
+from caketool.model import ColinearFeatureSelector, UnivariateFeatureSelector
 
-model = BinaryBoostTree(ModelConfig(n_estimators=500))
-model.fit(X_train, y_train, eval_set=[(X_val, y_val)], early_stopping_rounds=50)
-proba = model.predict_proba(X_test)[:, 1]
-importance = model.get_feature_importance()
+univariate = UnivariateFeatureSelector(threshold=0.05).fit(X_train, y_train)  # F-test p-value
+colinear = ColinearFeatureSelector(correlation_threshold=0.9).fit(univariate.transform(X_train), y_train)
+X_selected = colinear.transform(univariate.transform(X_train))
 ```
 
-`MulticlassBoostTree` has the same API for multiclass targets. The built-in pipeline handles infinities, outliers, categorical encoding (out-of-fold target encoding by default) and feature selection; missing values are left to XGBoost.
+Both are scikit-learn transformers (`dropped_cols_`, `selected_cols_`, `get_feature_names_out`), so they also work inside a `Pipeline`.
 
-### Out-of-Fold Cross-Validation
+### Out-of-Fold Training
 
 ```python
-from caketool.model import BaseEnsemble, BinaryBoostTree
+from xgboost import XGBClassifier
+from caketool.metric import gini
+from caketool.model import fit_oof
 
-models, oof_preds, oof_labels = BinaryBoostTree.fit_oof(
-    X_train, y_train, n_splits=5, early_stopping_rounds=50
+result = fit_oof(
+    XGBClassifier(n_estimators=500, early_stopping_rounds=50),
+    X_train, y_train,
+    cv=5,                       # int or any CV splitter; groups=... for GroupKFold
+    early_stopping_size=0.2,    # early stopping on a split of each training fold
+    fit_params={"verbose": False},
 )
-ensemble = BaseEnsemble(models)
-proba = ensemble.predict_proba(X_test)[:, 1]
-labels = ensemble.predict(X_test)  # argmax of the averaged probabilities
+print(gini(y_train, result.oof_predictions[:, 1]))   # OOF predictions aligned to X_train rows
+proba = result.ensemble.predict_proba(X_test)[:, 1]  # mean of the fold models
 ```
 
-With early stopping, each fold stops on a split of its own training data, so OOF predictions stay unbiased.
+`fit_oof` works with any scikit-learn compatible estimator or pipeline. Each fold's model only sees its training rows, so the OOF predictions are unbiased and can feed stacking or calibration.
 
 ### Explainability
 
@@ -183,8 +187,7 @@ with create_tracker("vertex_ai", experiment_name="my-exp", run_name="run-001",
 | ------ | ----------- | ----------- |
 | `caketool.eda` | `profile`, `plot_correlations`, `plot_scatter`, `plot_distribution_by_group`, `rank_associations` | Exploratory data analysis with Plotly |
 | `caketool.feature` | `generate_features_by_window` | Multi-backend aggregated feature engineering |
-| `caketool.model` | `BinaryBoostTree`, `MulticlassBoostTree`, `BaseEnsemble`, `VotingModel`, `ModelConfig` | XGBoost training & ensemble |
-| `caketool.model.preprocess` | `FeatureEncoder`, `FeatureRemover`, `ColinearFeatureRemover`, `UnivariateFeatureRemover`, `InfinityHandler`, `MissingValueImputer`, `OutlierClipper` | sklearn-compatible preprocessing transformers |
+| `caketool.model` | `UnivariateFeatureSelector`, `ColinearFeatureSelector`, `fit_oof`, `OOFEnsemble`, `OOFResult` | Feature selection and out-of-fold training |
 | `caketool.explainability` | `PermutationExplainer` | SHAP-based model-agnostic explainability |
 | `caketool.calibration` | `calibrate_score_to_normal`, `NormalScoreCalibrator` | Normal distribution score calibration |
 | `caketool.metric` | `association`, `gini`, `psi`, `psi_from_distribution` | Association, classification and stability metrics |

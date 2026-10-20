@@ -1,26 +1,33 @@
-"""Model building utilities for machine learning tasks.
+"""Model building utilities: feature selection and out-of-fold training.
 
-Provides XGBoost-based models with integrated preprocessing pipelines for
-binary and multiclass classification.
+Works with any scikit-learn compatible estimator instead of wrapping a
+specific model library.
 
-Task-specific models
+Feature selection
+-----------------
+- ``UnivariateFeatureSelector`` – keeps features whose univariate test
+  (F-test by default) against the target is significant.
+- ``ColinearFeatureSelector`` – drops features highly correlated with a more
+  target-relevant feature.
+
+Out-of-fold training
 --------------------
-- ``BinaryBoostTree`` – binary classification (``binary:logistic``)
-- ``MulticlassBoostTree`` – multiclass classification (``multi:softprob``)
+- ``fit_oof`` – trains one clone of an estimator per CV fold and returns
+  unbiased out-of-fold predictions (``OOFResult``).
+- ``OOFEnsemble`` – averages the fold estimators' predictions on new data.
 
-Ensemble utilities
-------------------
-- ``BaseEnsemble`` – averages predictions from a list of ``BaseBoostTree`` models
-- ``VotingModel`` – averages predictions from any sklearn-compatible estimators
-
-Configuration
--------------
-- ``ModelConfig`` – typed dataclass for all model and preprocessing parameters
+Example
+-------
+>>> from sklearn.pipeline import make_pipeline
+>>> from xgboost import XGBClassifier
+>>> from caketool.model import ColinearFeatureSelector, UnivariateFeatureSelector, fit_oof
+>>> pipeline = make_pipeline(UnivariateFeatureSelector(), ColinearFeatureSelector(), XGBClassifier())
+>>> result = fit_oof(pipeline, X_train, y_train, cv=5)
+>>> proba = result.ensemble.predict_proba(X_test)[:, 1]
 """
 
-from .base.boost_tree import BaseBoostTree as BaseBoostTree
-from .base.ensemble import BaseEnsemble as BaseEnsemble
-from .base.voting_model import VotingModel as VotingModel
-from .classification.binary import BinaryBoostTree as BinaryBoostTree
-from .classification.multiclass import MulticlassBoostTree as MulticlassBoostTree
-from .config import ModelConfig as ModelConfig
+from .oof import OOFEnsemble as OOFEnsemble
+from .oof import OOFResult as OOFResult
+from .oof import fit_oof as fit_oof
+from .selection import ColinearFeatureSelector as ColinearFeatureSelector
+from .selection import UnivariateFeatureSelector as UnivariateFeatureSelector

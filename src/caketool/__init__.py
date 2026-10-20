@@ -7,8 +7,8 @@ monitoring machine learning models, including:
   correlation matrices).
 - **feature** – Window-based feature engineering across multiple backends
   (pandas, polars, Spark, BigQuery BigFrames).
-- **model** – XGBoost-based binary and multiclass classifiers with a built-in
-  preprocessing pipeline, ensemble utilities, and feature selection.
+- **model** – Feature selection (univariate, collinear) and out-of-fold
+  training for any scikit-learn compatible estimator.
 - **metric** – Association metrics (Pearson, Spearman, Eta, Cramér's V),
   Gini coefficient, and Population Stability Index (PSI).
 - **calibration** – Post-hoc score calibration via normal distribution
