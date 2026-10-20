@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "caketool"
 dynamic = ["version"]
-description = "Common tools for MLOps"
+description = "Machine learning toolkit for data scientists: EDA, features, training, evaluation, explainability and monitoring"
 readme = "README.md"
 authors = [{ name = "Khoi Do", email = "khoidd@outlook.com" }]
 license = "MIT"
@@ -13,7 +13,7 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
 ]
-keywords = ["cake", "ds", "mlops"]
+keywords = ["cake", "data-science", "machine-learning", "deep-learning", "mlops"]
 dependencies = [
     "numpy>=1.24",
     "pandas>=2.0",
