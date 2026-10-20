@@ -5,8 +5,8 @@ monitoring machine learning models, including:
 
 - **eda** – Exploratory data analysis (profiles, univariate/bivariate plots,
   correlation matrices).
-- **feature** – Window-based feature engineering across multiple backends
-  (pandas, polars, Spark, BigQuery BigFrames).
+- **feature** – Window-based aggregate feature engineering on pandas, with
+  per-column choice of aggregations.
 - **model** – Feature selection (univariate, collinear) and out-of-fold
   training for any scikit-learn compatible estimator.
 - **metric** – Association metrics (Pearson, Spearman, Eta, Cramér's V),

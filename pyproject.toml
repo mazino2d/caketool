@@ -33,17 +33,12 @@ gcp = [
     "google-cloud-aiplatform>=1.50",
     "google-cloud-bigquery>=3.0",
     "google-cloud-storage>=2.0",
-    "bigframes>=1.0",
 ]
 wandb = ["wandb>=0.17"]
-spark = ["pyspark>=3.3"]
-polars = ["polars>=0.20.29"]
 all = [
     "caketool[onprem]",
     "caketool[gcp]",
     "caketool[wandb]",
-    "caketool[spark]",
-    "caketool[polars]",
 ]
 docs = [
     "pdoc>=14.0",

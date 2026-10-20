@@ -8,11 +8,8 @@ _INSTALL_HINTS = {
     "google.cloud.aiplatform": "caketool[gcp]",
     "google.cloud.bigquery": "caketool[gcp]",
     "google.cloud.storage": "caketool[gcp]",
-    "bigframes": "caketool[gcp]",
     "mlflow": "caketool[onprem]",
     "wandb": "caketool[wandb]",
-    "pyspark": "caketool[spark]",
-    "polars": "caketool[polars]",
 }
 
 

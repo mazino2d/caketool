@@ -112,7 +112,7 @@ class TestInstallHint:
     def test_optional_extra_hint(self):
         assert _install_hint("google.cloud.aiplatform") == "caketool[gcp]"
         assert _install_hint("mlflow") == "caketool[onprem]"
-        assert _install_hint("pyspark.sql") == "caketool[spark]"
+        assert _install_hint("wandb.sdk") == "caketool[wandb]"
 
     def test_unknown_package_uses_top_level_name(self):
         assert _install_hint("some_pkg.sub") == "some_pkg"
