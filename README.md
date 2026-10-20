@@ -1,6 +1,6 @@
 # Caketool
 
-A Python MLOps toolkit for common machine learning and data science workflows.
+A Python toolkit for data scientists working on machine learning and deep learning problems.
 Provides EDA, feature engineering, model training, explainability, experiment tracking, drift detection, calibration, and metrics — all designed for production-ready ML pipelines.
 
 Supports Python 3.10–3.12.

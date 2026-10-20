@@ -1,4 +1,4 @@
-"""Model building utilities for credit risk and machine learning tasks.
+"""Model building utilities for machine learning tasks.
 
 Provides XGBoost-based models with integrated preprocessing pipelines for
 binary and multiclass classification.

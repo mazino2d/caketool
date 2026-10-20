@@ -1,7 +1,7 @@
-"""caketool — Machine Learning toolbox for credit risk modelling.
+"""caketool — Machine learning toolkit for data scientists.
 
-Provides end-to-end utilities for building, evaluating, and monitoring
-credit scoring models, including:
+Provides end-to-end utilities for building, evaluating, explaining and
+monitoring machine learning models, including:
 
 - **eda** – Exploratory data analysis (profiles, univariate/bivariate plots,
   correlation matrices).
@@ -17,7 +17,7 @@ credit scoring models, including:
 - **experiment** – Unified experiment tracking interface for Vertex AI,
   MLflow, and Weights & Biases.
 - **monitor** – Drift detection (adversarial classification).
-- **report** – Risk score segmentation and reporting for credit decisions.
+- **report** – Risk score segmentation and band reporting.
 - **utils** – Dynamic imports and optional-dependency checks.
 
 Quick start
