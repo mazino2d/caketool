@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from caketool.report.risk_report import decribe_risk_score, describe_risk_score
+from caketool.report.risk_report import describe_risk_score
 
 
 @pytest.fixture
@@ -130,8 +130,3 @@ class TestDescribeRiskScoreEdgeCases:
         df = pd.DataFrame({"score": [0.1, 0.6], "label": labels})
         with pytest.raises(ValueError, match="only 0 and 1"):
             describe_risk_score(df)
-
-    def test_misspelled_alias_warns(self, score_df):
-        with pytest.warns(DeprecationWarning, match="describe_risk_score"):
-            result = decribe_risk_score(score_df)
-        pd.testing.assert_frame_equal(result, describe_risk_score(score_df))
