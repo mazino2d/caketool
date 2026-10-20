@@ -1,5 +1,3 @@
-import warnings
-
 import pandas as pd
 
 MISSING_BAND = "MISSING"
@@ -153,13 +151,3 @@ def describe_risk_score(
             "good",
         ]
     ]
-
-
-def decribe_risk_score(*args, **kwargs) -> pd.DataFrame:
-    """Deprecated misspelled alias of ``describe_risk_score``."""
-    warnings.warn(
-        "decribe_risk_score is deprecated and will be removed; use describe_risk_score instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return describe_risk_score(*args, **kwargs)
