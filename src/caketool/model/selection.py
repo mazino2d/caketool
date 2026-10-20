@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -10,40 +12,20 @@ def _as_target(y, index: pd.Index) -> pd.Series:
     return pd.Series(np.asarray(y), index=index)
 
 
-class FeatureRemover(TransformerMixin, BaseEstimator):
-    """Transformer that removes specified columns from a DataFrame.
-
-    Parameters
-    ----------
-    dropped_cols : tuple[str, ...], optional
-        Tuple of column names to be removed. Default ``()``.
-    """
-
-    def __init__(self, dropped_cols: tuple[str, ...] = ()):
-        self.dropped_cols = dropped_cols
-
-    def fit(self, X, y=None):
-        """No-op fit for sklearn pipeline compatibility.
-
-        Parameters
-        ----------
-        X : pd.DataFrame
-        y : ignored
-
-        Returns
-        -------
-        self
-        """
-        return self
+class _FeatureSelector(TransformerMixin, BaseEstimator):
+    """Base for selectors that learn ``dropped_cols_`` during fit and drop them in transform."""
 
     def __sklearn_is_fitted__(self) -> bool:
-        return True
+        return hasattr(self, "dropped_cols_")
 
-    def _columns_to_drop(self) -> list[str]:
-        return list(self.dropped_cols)
+    def _set_selection(self, X: pd.DataFrame, dropped_cols: list[str]) -> None:
+        self.feature_names_in_ = np.asarray(X.columns, dtype=object)
+        self.dropped_cols_ = dropped_cols
+        dropped = set(dropped_cols)
+        self.selected_cols_ = [col for col in X.columns if col not in dropped]
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Remove the specified columns from the DataFrame.
+        """Drop the columns identified during fit.
 
         Parameters
         ----------
@@ -52,25 +34,31 @@ class FeatureRemover(TransformerMixin, BaseEstimator):
         Returns
         -------
         pd.DataFrame
+            ``X`` without ``dropped_cols_``. Columns unseen during fit are kept.
         """
-        to_drop = set(self._columns_to_drop())
-        columns = [col for col in X.columns if col in to_drop]
-        return X.drop(columns=columns)
-
-
-class _FittedFeatureRemover(FeatureRemover):
-    """Base for removers that learn ``dropped_cols_`` during fit."""
-
-    def __sklearn_is_fitted__(self) -> bool:
-        return hasattr(self, "dropped_cols_")
-
-    def _columns_to_drop(self) -> list[str]:
         check_is_fitted(self, "dropped_cols_")
-        return self.dropped_cols_
+        dropped = set(self.dropped_cols_)
+        return X.drop(columns=[col for col in X.columns if col in dropped])
+
+    def get_feature_names_out(self, input_features=None) -> np.ndarray:
+        """Return the names of the selected features.
+
+        Parameters
+        ----------
+        input_features : ignored
+            Present for sklearn API compatibility.
+
+        Returns
+        -------
+        np.ndarray
+            ``selected_cols_`` as an object array.
+        """
+        check_is_fitted(self, "dropped_cols_")
+        return np.asarray(self.selected_cols_, dtype=object)
 
 
-class ColinearFeatureRemover(_FittedFeatureRemover):
-    """Remove collinear features based on a pairwise correlation threshold.
+class ColinearFeatureSelector(_FeatureSelector):
+    """Select features by removing collinear ones based on a pairwise correlation threshold.
 
     Features are ranked by their absolute correlation with the target ``y``.
     Starting from the most correlated feature, any lower-ranked feature that
@@ -87,17 +75,25 @@ class ColinearFeatureRemover(_FittedFeatureRemover):
     ----------
     dropped_cols_ : list[str]
         Names of removed features (available after fit).
+    selected_cols_ : list[str]
+        Names of kept features, in input order (available after fit).
+
+    Examples
+    --------
+    >>> selector = ColinearFeatureSelector(correlation_threshold=0.9).fit(X_train, y_train)
+    >>> X_train_selected = selector.transform(X_train)
     """
 
     def __init__(self, correlation_threshold: float = 0.9):
         self.correlation_threshold = correlation_threshold
 
-    def fit(self, X: pd.DataFrame, y=None):
+    def fit(self, X: pd.DataFrame, y=None) -> "ColinearFeatureSelector":
         """Identify collinear features.
 
         Parameters
         ----------
         X : pd.DataFrame
+            Numeric features.
         y : array-like
             Target values used to rank features by relevance. Matched to ``X``
             by position, not by index.
@@ -115,15 +111,15 @@ class ColinearFeatureRemover(_FittedFeatureRemover):
         for idx, col_a in enumerate(corr.columns):
             if col_a not in to_remove:
                 for col_b in corr.columns[idx + 1 :]:
-                    if abs(corr[col_a][col_b]) > self.correlation_threshold:
+                    if col_b not in to_remove and abs(corr[col_a][col_b]) > self.correlation_threshold:
                         to_remove.append(col_b)
 
-        self.dropped_cols_ = to_remove
+        self._set_selection(X, to_remove)
         return self
 
 
-class UnivariateFeatureRemover(_FittedFeatureRemover):
-    """Remove features with low univariate statistical relevance.
+class UnivariateFeatureSelector(_FeatureSelector):
+    """Select features with univariate statistical relevance to the target.
 
     Uses a scoring function (default: F-test for classification) to compute a
     p-value per feature. Features whose p-value exceeds the threshold are dropped.
@@ -134,7 +130,7 @@ class UnivariateFeatureRemover(_FittedFeatureRemover):
     score_func : callable, optional
         Univariate scoring function following the sklearn API: takes ``(X, y)``
         and returns ``(scores, p_values)``. Common choices: ``f_classif``,
-        ``chi2``. Default ``f_classif``.
+        ``chi2``, ``f_regression``. Default ``f_classif``.
     threshold : float, optional
         Maximum allowed p-value. Features with ``p_value > threshold`` are
         removed. Default ``0.05``.
@@ -145,10 +141,18 @@ class UnivariateFeatureRemover(_FittedFeatureRemover):
         DataFrame with columns ``['features', 'f_statistic', 'p_values']``
         after fit.
     dropped_cols_ : list[str]
-        Names of columns identified for removal (available after fit).
+        Names of removed features (available after fit).
+    selected_cols_ : list[str]
+        Names of kept features, in input order (available after fit).
+
+    Examples
+    --------
+    >>> selector = UnivariateFeatureSelector(threshold=0.05).fit(X_train, y_train)
+    >>> selector.feature_importance_.sort_values("p_values").head()
+    >>> X_train_selected = selector.transform(X_train)
     """
 
-    def __init__(self, score_func: callable = f_classif, threshold: float = 0.05) -> None:
+    def __init__(self, score_func: Callable = f_classif, threshold: float = 0.05) -> None:
         self.score_func = score_func
         self.threshold = threshold
 
@@ -167,14 +171,15 @@ class UnivariateFeatureRemover(_FittedFeatureRemover):
             f_statistic[i], p_values[i] = f_stat[0], p_val[0]
         return f_statistic, p_values
 
-    def fit(self, X: pd.DataFrame, y=None) -> "UnivariateFeatureRemover":
+    def fit(self, X: pd.DataFrame, y=None) -> "UnivariateFeatureSelector":
         """Identify low-relevance features via univariate statistical testing.
 
         Parameters
         ----------
         X : pd.DataFrame
+            Numeric features.
         y : array-like
-            Target labels required by ``score_func``.
+            Target values required by ``score_func``, matched to ``X`` by position.
 
         Returns
         -------
@@ -184,7 +189,6 @@ class UnivariateFeatureRemover(_FittedFeatureRemover):
         self.feature_importance_ = pd.DataFrame(
             {"features": X.columns, "f_statistic": f_statistic, "p_values": p_values}
         ).fillna({"f_statistic": 0, "p_values": 1})
-        self.dropped_cols_ = list(
-            self.feature_importance_[self.feature_importance_["p_values"] > self.threshold]["features"]
-        )
+        dropped = self.feature_importance_.loc[self.feature_importance_["p_values"] > self.threshold, "features"]
+        self._set_selection(X, list(dropped))
         return self

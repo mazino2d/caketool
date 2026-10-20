@@ -44,10 +44,6 @@ cachetools==5.3.3
     #   google-auth
     #   mlflow-skinny
     #   mlflow-tracing
-category-encoders==2.6.3
-    # via
-    #   caketool
-    #   caketool (pyproject.toml)
 certifi==2024.6.2
     # via
     #   pyogrio
@@ -390,7 +386,6 @@ numpy==1.26.4
     #   bigframes
     #   caketool
     #   caketool (pyproject.toml)
-    #   category-encoders
     #   contourpy
     #   db-dtypes
     #   geopandas
@@ -455,7 +450,6 @@ pandas==2.2.2
     #   bigframes
     #   caketool
     #   caketool (pyproject.toml)
-    #   category-encoders
     #   db-dtypes
     #   geopandas
     #   google-cloud-bigquery
@@ -469,10 +463,6 @@ parso==0.8.6
     # via jedi
 parsy==2.2
     # via bigframes
-patsy==0.5.6
-    # via
-    #   category-encoders
-    #   statsmodels
 pexpect==4.9.0
     # via ipython
 pillow==10.4.0
@@ -671,7 +661,6 @@ scikit-learn==1.5.0
     # via
     #   caketool
     #   caketool (pyproject.toml)
-    #   category-encoders
     #   mlflow
     #   shap
     #   skops
@@ -679,7 +668,6 @@ scipy==1.13.1
     # via
     #   caketool
     #   caketool (pyproject.toml)
-    #   category-encoders
     #   mlflow
     #   scikit-learn
     #   shap
@@ -718,8 +706,6 @@ stack-data==0.6.3
     # via ipython
 starlette==0.52.1
     # via fastapi
-statsmodels==0.14.2
-    # via category-encoders
 tabulate==0.10.0
     # via bigframes
 threadpoolctl==3.5.0
@@ -731,10 +717,7 @@ tornado==6.5.5
     #   ipykernel
     #   jupyter-client
 tqdm==4.67.1
-    # via
-    #   caketool
-    #   caketool (pyproject.toml)
-    #   shap
+    # via shap
 traitlets==5.14.3
     # via
     #   ipykernel

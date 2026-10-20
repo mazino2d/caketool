@@ -28,7 +28,7 @@ def get_class(name: str):
     Parameters
     ----------
     name : str
-        Fully qualified dotted path, e.g. ``"category_encoders.TargetEncoder"``
+        Fully qualified dotted path, e.g. ``"sklearn.preprocessing.StandardScaler"``
         or ``"sklearn.linear_model.LogisticRegression"``.
 
     Returns
@@ -45,8 +45,8 @@ def get_class(name: str):
 
     Examples
     --------
-    >>> TargetEncoder = get_class("category_encoders.TargetEncoder")
-    >>> enc = TargetEncoder(smoothing=1.0)
+    >>> StandardScaler = get_class("sklearn.preprocessing.StandardScaler")
+    >>> scaler = StandardScaler(with_mean=False)
     """
     module_path, _, attr = name.rpartition(".")
     if not module_path:
