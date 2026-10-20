@@ -15,10 +15,8 @@ pip install caketool
 
 # Optional extras
 pip install "caketool[onprem]"   # MLflow tracking
-pip install "caketool[gcp]"      # Vertex AI, BigQuery, GCS, BigFrames
+pip install "caketool[gcp]"      # Vertex AI, BigQuery, GCS
 pip install "caketool[wandb]"    # Weights & Biases tracking
-pip install "caketool[spark]"    # PySpark feature backend
-pip install "caketool[polars]"   # Polars feature backend
 
 # Everything
 pip install "caketool[all]"
@@ -60,11 +58,13 @@ result = generate_features_by_window(
     string_cols=("category",),
     boolean_cols=("is_active",),
     lookback_days=(0, 7, 30),   # 0 = lifetime (all rows before the snapshot)
-    backend="pandas",           # "pandas" | "polars" | "spark" | "bigframes"
+    # Optional: only these aggregations for these columns; the rest get every aggregation of their type
+    aggs={"amount": ["sum", "max", "p50"], "balance": ["avg"], "category": ["nunique"]},
 )
 ```
 
 Only rows with `report_date < fs_event_timestamp` are used, for every window including lifetime.
+Available aggregations: numeric `min max avg sum std cnt diff p25 p50 p75`, string/categorical `cnt nunique unique_ratio`, boolean `poscnt posratio`, date `firstdatediff lastdatediff daysbetween`. An empty list skips a column.
 
 ### Feature Selection
 
@@ -186,7 +186,7 @@ with create_tracker("vertex_ai", experiment_name="my-exp", run_name="run-001",
 | Module | Key exports | Description |
 | ------ | ----------- | ----------- |
 | `caketool.eda` | `profile`, `plot_correlations`, `plot_scatter`, `plot_distribution_by_group`, `rank_associations` | Exploratory data analysis with Plotly |
-| `caketool.feature` | `generate_features_by_window` | Multi-backend aggregated feature engineering |
+| `caketool.feature` | `generate_features_by_window` | Windowed aggregate features (pandas), configurable per column |
 | `caketool.model` | `UnivariateFeatureSelector`, `ColinearFeatureSelector`, `fit_oof`, `OOFEnsemble`, `OOFResult` | Feature selection and out-of-fold training |
 | `caketool.explainability` | `PermutationExplainer` | SHAP-based model-agnostic explainability |
 | `caketool.calibration` | `calibrate_score_to_normal`, `NormalScoreCalibrator` | Normal distribution score calibration |

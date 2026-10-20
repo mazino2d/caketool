@@ -35,8 +35,8 @@ and PR descriptions.
    - Reproducible: anything random takes a `random_state` / seed.
    - Robust to messy data: NaN, infinities, constant columns, bool and categorical dtypes,
      empty inputs. Fail with a clear error rather than return a silently wrong number.
-   - Backend parity: when a function supports several backends (pandas, polars, Spark,
-     BigFrames, …), every backend returns the same result for the same input.
+   - Backend parity: when a function supports several backends, every backend returns
+     the same result for the same input.
    - Compatible with pandas 2 and 3.
 4. **Stable public API.** Users import from the package namespaces (`caketool.model`,
    `caketool.metric`, …). Renaming or removing a public name is a breaking change: keep a
